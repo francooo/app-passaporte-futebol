@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useActionState } from "react";
 import {
   googleSignInAction,
   loginAction,
@@ -28,19 +29,42 @@ function Divider() {
   return <div aria-hidden className="my-1 h-px bg-linha" />;
 }
 
-type LoginProps = { next?: string; googleEnabled: boolean; notice?: string };
+/*
+ * Partes que dependem da URL ficam em <Suspense> próprios: o formulário em si
+ * é renderizado uma única vez e nunca é trocado enquanto o usuário digita.
+ */
+function NextField() {
+  const next = useSearchParams().get("next");
+  return next ? <input type="hidden" name="next" value={next} /> : null;
+}
 
-export function LoginForm({ next, googleEnabled, notice }: LoginProps) {
+const notices: Record<string, string> = {
+  redefinida: "Senha redefinida. Entre com a nova senha.",
+  OAuthAccountNotLinked: "Este e-mail já está ligado a outra forma de login.",
+};
+
+function LoginNotice() {
+  const params = useSearchParams();
+  const notice = notices[params.get("senha") ?? ""] ?? notices[params.get("error") ?? ""];
+  if (!notice) return null;
+  return (
+    <p role="status" className="rounded-lg bg-visita px-3 py-2 text-sm text-estadio">
+      {notice}
+    </p>
+  );
+}
+
+export function LoginForm({ googleEnabled }: { googleEnabled: boolean }) {
   const [state, action, pending] = useActionState(loginAction, initial);
   return (
     <div className="flex flex-col gap-4">
-      {notice && (
-        <p role="status" className="rounded-lg bg-visita px-3 py-2 text-sm text-estadio">
-          {notice}
-        </p>
-      )}
+      <Suspense fallback={null}>
+        <LoginNotice />
+      </Suspense>
       <form action={action} className="flex flex-col gap-4" noValidate>
-        {next && <input type="hidden" name="next" value={next} />}
+        <Suspense fallback={null}>
+          <NextField />
+        </Suspense>
         <TextField label="E-mail" name="email" type="email" icon="email" autoComplete="email" inputMode="email" defaultValue={state.values?.email} required error={state.errors?.email?.[0]} />
         <TextField label="Senha" name="password" type="password" icon="lock" autoComplete="current-password" required error={state.errors?.password?.[0]} />
         <Link href="/recuperar-senha" className="self-end text-sm font-semibold text-estadio underline-offset-4 hover:underline">
@@ -51,7 +75,7 @@ export function LoginForm({ next, googleEnabled, notice }: LoginProps) {
           {pending ? "Entrando…" : "Entrar"}
         </Button>
       </form>
-      {googleEnabled && <GoogleButton next={next} />}
+      {googleEnabled && <GoogleButton />}
       <Divider />
       <Link href="/cadastro" className="text-center font-display text-lg font-semibold text-estadio">
         Criar conta
@@ -60,10 +84,12 @@ export function LoginForm({ next, googleEnabled, notice }: LoginProps) {
   );
 }
 
-function GoogleButton({ next }: { next?: string }) {
+function GoogleButton() {
   return (
     <form action={googleSignInAction}>
-      {next && <input type="hidden" name="next" value={next} />}
+      <Suspense fallback={null}>
+        <NextField />
+      </Suspense>
       <Button type="submit" variant="secundario" className="w-full text-lg">
         <svg viewBox="0 0 24 24" width={20} height={20} aria-hidden>
           <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.4h6.5a5.6 5.6 0 0 1-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.7Z" />
