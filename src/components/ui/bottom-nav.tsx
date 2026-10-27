@@ -3,29 +3,19 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
-import { KitIcon, type KitIconName } from "./kit-icon";
+import { KitIcon } from "./kit-icon";
+import { isActive, navItems } from "./nav-items";
 
-const items: Array<{ href: string; label: string; icon: KitIconName }> = [
-  { href: "/app", label: "Home", icon: "home" },
-  { href: "/app/mapa", label: "Mapa", icon: "map" },
-  { href: "/app/passaporte", label: "Passaporte", icon: "passport" },
-  { href: "/app/perfil", label: "Perfil", icon: "profile" },
-];
-
-function isActive(pathname: string, href: string) {
-  return href === "/app" ? pathname === href : pathname.startsWith(href);
-}
-
-/** Barra persistente Home → Mapa → Passaporte → Perfil (navegação v05). */
+/** Barra persistente Home → Mapa → Passaporte → Perfil (mobile e tablet). */
 export function BottomNav() {
   const pathname = usePathname();
   return (
     <nav
       aria-label="Navegação principal"
-      className="fixed inset-x-0 bottom-0 z-40 border-t-2 border-[#E5DFAF] bg-[#FFFEF8] pb-[env(safe-area-inset-bottom)] shadow-[0_-3px_9px_#123A3210]"
+      className="fixed inset-x-0 bottom-0 z-40 border-t-2 border-[#E5DFAF] bg-[#FFFEF8] pb-[env(safe-area-inset-bottom)] shadow-[0_-3px_9px_#123A3210] lg:hidden"
     >
       <ul className="mx-auto grid max-w-xl grid-cols-4">
-        {items.map((item) => {
+        {navItems.map((item) => {
           const active = isActive(pathname, item.href);
           return (
             <li key={item.href}>

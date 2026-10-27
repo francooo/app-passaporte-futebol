@@ -15,7 +15,8 @@ const tones = { verde: "#123A32", azul: "#1F4E9C" };
 /** Selo circular com nome do estádio no arco superior e local no inferior. */
 export function Stamp({ name, place, photoUrl, tone = "verde", size = 112, className }: Props) {
   const color = tones[tone];
-  const uid = `stamp-${name}-${place}`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  // Id estável e único por variante (o mesmo carimbo pode aparecer em linha e em tile).
+  const uid = `stamp-${name}-${place}-${size}`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
   return (
     <svg

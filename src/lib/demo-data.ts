@@ -50,4 +50,18 @@ export const demoVisits: Array<{
 export const demoNearby = [
   { id: "pacaembu", name: "Estádio do Pacaembu", distanceKm: 2.4, photoUrl: null },
   { id: "allianz", name: "Allianz Parque", distanceKm: 4.1, photoUrl: "/photos/allianz-parque-foto-real.jpg" },
+  { id: "neo-quimica", name: "Neo Química Arena", distanceKm: 18.9, photoUrl: null },
 ];
+
+/**
+ * Ranking demonstrativo do mockup "Mapa". Capacidades aproximadas, só para
+ * layout: confirmar com fonte oficial antes de publicar (docs/sources-and-data.md).
+ */
+export const demoCountryRanking = {
+  country: "Brasil",
+  stadiums: [
+    { id: "maracana", name: "Maracanã", city: "Rio de Janeiro", capacity: 78838 },
+    { id: "mane-garrincha", name: "Mané Garrincha", city: "Brasília", capacity: 72788 },
+    { id: "morumbis", name: "MorumBIS", city: "São Paulo", capacity: 66795 },
+  ],
+};
