@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+/* Tokens do kit v05 "Ingresso de arquibancada" (assets/paleta-e-tokens.json) */
+@theme {
+  --color-estadio: #123a32;
+  --color-estadio-claro: #1d5245;
+  --color-ingresso: #f7c928;
+  --color-ingresso-escuro: #e0b416;
+  --color-marfim: #fff9e8;
+  --color-papel: #f8f3e3;
+  --color-tinta: #172520;
+  --color-suave: #5b6b64;
+  --color-linha: #d8d0b4;
+  --color-visita: #d6e3d6;
+  --color-partida: #f6e7b0;
+  --color-erro: #b3261e;
+
+  --font-display: var(--font-oswald), "Arial Narrow", sans-serif;
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+
+  --radius-ticket: 1.25rem;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    background-color: var(--color-marfim);
+    color: var(--color-tinta);
+    font-family: var(--font-sans);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-estadio);
+    outline-offset: 2px;
+    border-radius: 0.5rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* Granulação leve de papel: decorativa, sem reduzir contraste */
+  .papel {
+    background-color: var(--color-marfim);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .45 0 0 0 0 .38 0 0 0 0 .2 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* Bordas perfuradas laterais (furos verdes sobre a moldura) */
+  .perfurado {
+    background-image:
+      radial-gradient(circle at 0 50%, var(--color-estadio) 4px, transparent 4.5px),
+      radial-gradient(circle at 100% 50%, var(--color-estadio) 4px, transparent 4.5px);
+    background-size: 8px 18px;
+    background-position:
+      0 0,
+      100% 0;
+    background-repeat: repeat-y;
+  }
+
+  /* "Mordidas" semicirculares nas laterais, como ingresso físico */
+  .mordida {
+    --mordida: 14px;
+    mask:
+      radial-gradient(circle var(--mordida) at left 50%, #0000 98%, #000) left / 51% 100% no-repeat,
+      radial-gradient(circle var(--mordida) at right 50%, #0000 98%, #000) right / 51% 100% no-repeat;
+  }
+
+  .titulo-display {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.05;
+  }
+
+  .rotulo-display {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+}
