@@ -97,6 +97,29 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
   createdAt: createdAt(),
 });
 
+/** Sessões do app mobile: token opaco (Bearer); guardamos só o hash. */
+export const apiTokens = pgTable(
+  "api_tokens",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expires: timestamp("expires", { mode: "date" }).notNull(),
+    lastUsedAt: timestamp("last_used_at", { mode: "date" }),
+    revokedAt: timestamp("revoked_at", { mode: "date" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("api_tokens_user_idx").on(t.userId)],
+);
+
+/** Janela fixa de tentativas (ex.: login por IP/e-mail). */
+export const rateLimits = pgTable("rate_limits", {
+  key: text("key").primaryKey(),
+  count: integer("count").notNull().default(0),
+  windowStart: timestamp("window_start", { mode: "date" }).notNull().defaultNow(),
+});
+
 // ── Catálogo ─────────────────────────────────────────────────────────────────
 
 export const stadiums = pgTable(
