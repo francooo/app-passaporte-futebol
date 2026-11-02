@@ -1,165 +1,96 @@
-import { StyleSheet, Text, TextInput, View } from "react-native";
-import { SvgXml } from "react-native-svg";
+import { router } from "expo-router";
+import { useMemo, useState } from "react";
+import { ActivityIndicator, Linking, StyleSheet, Text, View } from "react-native";
 import { Button } from "@/components/button";
-import { FlagBR } from "@/components/flag-br";
+import { CountryPicker } from "@/components/country-picker";
 import { KitIcon } from "@/components/kit-icon";
 import { Screen } from "@/components/screen";
-import { worldMapSvg } from "@/generated/world-map";
-import { demoCountryRanking } from "@/lib/demo-data";
+import { StadiumRow } from "@/components/stadium-bits";
+import { WorldMap } from "@/components/world-map";
+import { API_URL } from "@/lib/api";
+import { catalogApi, useLoad } from "@/lib/catalog";
 import { colors, font, radius, type } from "@/theme";
 
-const capacity = new Intl.NumberFormat("pt-BR");
+const DEFAULT_COUNTRY = "BRA";
+const TOP = 5;
 
 export default function MapaScreen() {
-  const { country, stadiums } = demoCountryRanking;
+  const [selected, setSelected] = useState(DEFAULT_COUNTRY);
+  const countries = useLoad(() => catalogApi.countries(), []);
+  const top = useLoad(() => catalogApi.stadiums(selected), [selected]);
+  const available = useMemo(() => new Set((countries.data ?? []).map((c) => c.iso3)), [countries.data]);
+  const country = countries.data?.find((c) => c.iso3 === selected);
 
   return (
     <Screen>
-      <View style={styles.headRow}>
-        <View style={styles.flex}>
-          <Text style={[type.titulo, styles.title]} accessibilityRole="header">
-            Mapa dos estádios
-          </Text>
-          <Text style={type.suave}>Explore o futebol pelo mundo</Text>
-        </View>
-        <Text style={[type.rotulo, styles.chip]}>✦ IA</Text>
-      </View>
-
-      <View style={styles.search}>
-        <KitIcon name="search" size={22} />
-        <TextInput
-          placeholder="Buscar país ou estádio"
-          placeholderTextColor={colors.suave}
-          accessibilityLabel="Buscar país ou estádio"
-          style={styles.searchInput}
-          returnKeyType="search"
-        />
+      <View>
+        <Text style={[type.titulo, styles.title]} accessibilityRole="header">
+          Mapa dos estádios
+        </Text>
+        <Text style={type.suave}>Explore o futebol pelo mundo</Text>
       </View>
 
       <View style={styles.mapBox}>
-        <Text style={[type.rotulo, styles.mapLabel]}>Mapa-múndi</Text>
-        <View style={styles.map} accessible accessibilityRole="image" accessibilityLabel="Mapa-múndi com o Brasil em destaque">
-          <SvgXml xml={worldMapSvg} width="100%" height="100%" />
+        <Text style={[type.rotulo, styles.mapLabel]}>Mapa-múndi · toque num país</Text>
+        <View style={styles.map}>
+          <WorldMap selected={selected} available={available} onSelect={setSelected} />
         </View>
+        <Text style={styles.small}>Mapa: Natural Earth · Dados: Wikidata</Text>
       </View>
 
-      <View style={styles.selected}>
-        <View style={styles.inline}>
-          <FlagBR />
-          <Text style={styles.countryText}>{country}</Text>
-        </View>
-        <Text style={[type.rotulo, styles.selectedLabel]}>País selecionado</Text>
-      </View>
+      {countries.data && <CountryPicker countries={countries.data} selected={selected} onSelect={setSelected} />}
 
       <View style={styles.headRow}>
-        <Text style={[type.titulo, styles.subtitle]} accessibilityRole="header">
-          Estádios do {country}
+        <Text style={[type.titulo, styles.subtitle]} accessibilityRole="header" numberOfLines={2}>
+          Estádios: {country?.name ?? selected}
         </Text>
-        <Text style={styles.sort}>▾ Maior capacidade</Text>
+        {top.data && <Text style={type.suave}>{top.data.total} no catálogo</Text>}
       </View>
 
-      <View style={styles.list}>
-        {stadiums.map((s, i) => (
-          <View key={s.id} style={styles.item} accessible accessibilityLabel={`${i + 1}º, ${s.name}, ${s.city}, ${capacity.format(s.capacity)} lugares`}>
-            <View style={styles.rank}>
-              <Text style={styles.rankText}>{i + 1}º</Text>
-            </View>
-            <KitIcon name="stadium" size={28} />
-            <View style={styles.flex}>
-              <Text style={styles.itemName} numberOfLines={1}>
-                {s.name}
-              </Text>
-              <Text style={type.suave}>{s.city}</Text>
-            </View>
-            <View style={styles.capacity}>
-              <Text style={styles.capacityValue}>{capacity.format(s.capacity)}</Text>
-              <Text style={styles.capacityLabel}>lugares</Text>
-            </View>
-          </View>
-        ))}
-      </View>
+      {top.loading ? (
+        <ActivityIndicator color={colors.estadio} style={styles.loading} />
+      ) : top.error ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>{top.error}</Text>
+          <Button variant="secundario" onPress={top.reload}>
+            Tentar de novo
+          </Button>
+        </View>
+      ) : top.data?.items.length ? (
+        <View style={styles.list}>
+          {top.data.items.slice(0, TOP).map((s, i) => (
+            <StadiumRow key={s.id} stadium={s} position={i + 1} />
+          ))}
+        </View>
+      ) : (
+        <Text style={type.suave}>Ainda não há estádios deste país no catálogo.</Text>
+      )}
 
-      <Button variant="secundario" icon={<KitIcon name="arrow-right" size={20} />}>
+      <Button
+        icon={<KitIcon name="arrow-right" size={20} />}
+        onPress={() => router.push({ pathname: "/estadios", params: { pais: selected, nome: country?.name ?? selected } })}
+      >
         Ver todos os estádios
       </Button>
 
-      <Text style={styles.note}>Capacidades demonstrativas. Seleção de país e mapa navegável chegam na Fase 4.</Text>
+      <Text style={[styles.small, styles.link]} accessibilityRole="link" onPress={() => Linking.openURL(`${API_URL}/creditos`)}>
+        Créditos das imagens e fontes de dados
+      </Text>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  headRow: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 12 },
   title: { fontSize: 34 },
-  chip: {
-    fontSize: 13,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.linha,
-    backgroundColor: colors.partida,
-    overflow: "hidden",
-  },
-  search: {
-    minHeight: 48,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16,
-    borderRadius: radius.campo,
-    borderWidth: 1,
-    borderColor: colors.linha,
-    backgroundColor: colors.branco,
-  },
-  searchInput: { flex: 1, minWidth: 0, fontFamily: font.sans, fontSize: 16, color: colors.tinta, paddingVertical: 12 },
-  mapBox: { borderWidth: 4, borderColor: colors.ingresso, borderRadius: radius.cartao, backgroundColor: colors.branco, padding: 12 },
-  mapLabel: { fontSize: 11, color: colors.suave, marginBottom: 8 },
+  mapBox: { borderWidth: 4, borderColor: colors.ingresso, borderRadius: radius.cartao, backgroundColor: colors.branco, padding: 12, gap: 8 },
+  mapLabel: { fontSize: 11, color: colors.suave },
   map: { width: "100%", aspectRatio: 720 / 320 },
-  selected: {
-    minHeight: 56,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    borderRadius: radius.campo,
-    borderWidth: 1,
-    borderColor: colors.linha,
-    backgroundColor: colors.papel,
-  },
-  inline: { flexDirection: "row", alignItems: "center", gap: 12 },
-  countryText: { fontFamily: font.displaySemi, fontSize: 20, color: colors.estadio },
-  selectedLabel: { fontSize: 11, color: colors.suave },
+  headRow: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 12 },
   subtitle: { fontSize: 24, flexShrink: 1 },
-  sort: {
-    fontFamily: font.sansSemi,
-    fontSize: 12,
-    color: colors.estadio,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.linha,
-    backgroundColor: colors.branco,
-    overflow: "hidden",
-  },
-  list: { gap: 12 },
-  item: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 12,
-    borderRadius: radius.campo,
-    borderWidth: 1,
-    borderColor: colors.linha,
-    backgroundColor: colors.branco,
-  },
-  rank: { width: 40, height: 40, borderRadius: 8, backgroundColor: colors.estadio, alignItems: "center", justifyContent: "center" },
-  rankText: { fontFamily: font.display, fontSize: 18, color: colors.ingresso },
-  itemName: { fontFamily: font.sansSemi, fontSize: 16, color: colors.estadio },
-  capacity: { alignItems: "flex-end" },
-  capacityValue: { fontFamily: font.display, fontSize: 20, color: colors.estadio },
-  capacityLabel: { fontFamily: font.sans, fontSize: 12, color: colors.suave },
-  note: { fontFamily: font.sans, fontSize: 12, color: colors.suave },
+  list: { gap: 10 },
+  loading: { paddingVertical: 24 },
+  errorBox: { gap: 12 },
+  errorText: { fontFamily: font.sans, color: colors.erro },
+  small: { fontFamily: font.sans, fontSize: 12, color: colors.suave },
+  link: { textDecorationLine: "underline" },
 });

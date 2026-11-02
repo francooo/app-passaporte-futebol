@@ -1,17 +1,18 @@
 import type { Metadata } from "next";
-import Image from "next/image";
-import { ButtonLink } from "@/components/ui/button";
-import { FlagBR } from "@/components/ui/flag-br";
+import Link from "next/link";
+import { Suspense } from "react";
+import { CountrySelect } from "@/components/catalog/country-select";
+import { StadiumRow } from "@/components/catalog/stadium-bits";
+import { WorldMap } from "@/components/catalog/world-map";
 import { KitIcon } from "@/components/ui/kit-icon";
-import { demoCountryRanking } from "@/lib/demo-data";
+import { listCountries, listStadiums } from "@/lib/catalog/queries";
 
 export const metadata: Metadata = { title: "Mapa dos estádios" };
 
-const capacity = new Intl.NumberFormat("pt-BR");
+const DEFAULT_COUNTRY = "BRA";
+const TOP = 5;
 
-export default function MapaPage() {
-  const { country, stadiums } = demoCountryRanking;
-
+export default function MapaPage({ searchParams }: PageProps<"/app/mapa">) {
   return (
     <div className="flex flex-col gap-5 lg:gap-8">
       <div className="flex items-end justify-between gap-4">
@@ -19,72 +20,79 @@ export default function MapaPage() {
           <h1 className="titulo-display text-4xl text-estadio lg:text-6xl">Mapa dos estádios</h1>
           <p className="mt-1 text-suave lg:mt-3 lg:text-lg">Explore o futebol pelo mundo</p>
         </div>
-        <span className="rotulo-display flex items-center gap-1 rounded-full border border-linha bg-partida/60 px-3 py-1 text-sm text-estadio">
-          ✦ IA
-        </span>
       </div>
+      <Suspense fallback={<MapaSkeleton />}>
+        <MapaContent searchParams={searchParams} />
+      </Suspense>
+    </div>
+  );
+}
 
-      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:gap-8">
-        <section className="flex flex-col rounded-2xl border-4 border-ingresso bg-white p-3 lg:col-span-8 lg:p-6">
-          <p className="rotulo-display mb-2 text-xs text-suave lg:text-sm">Mapa-múndi</p>
-          <Image src="/map/world-map.svg" alt="" width={720} height={320} className="my-auto h-auto w-full" unoptimized />
-        </section>
+async function MapaContent({ searchParams }: Pick<PageProps<"/app/mapa">, "searchParams">) {
+  const { pais } = await searchParams;
+  const countries = await listCountries();
+  const available = new Map(countries.map((c) => [c.iso3, c.name]));
+  const requested = typeof pais === "string" ? pais.toUpperCase() : DEFAULT_COUNTRY;
+  const selected = available.has(requested) ? requested : DEFAULT_COUNTRY;
+  const country = countries.find((c) => c.iso3 === selected);
+  const top = await listStadiums({ country: selected, pageSize: TOP });
 
-        <aside className="flex flex-col gap-4 lg:col-span-4">
-          <label className="flex min-h-12 items-center gap-3 rounded-xl border border-linha bg-white px-4">
-            <KitIcon name="search" size={22} />
-            <span className="sr-only">Buscar país ou estádio</span>
-            <input
-              type="search"
-              placeholder="Buscar país ou estádio"
-              className="min-w-0 flex-1 bg-transparent py-3 outline-none placeholder:text-suave"
-            />
-          </label>
+  return (
+    <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:gap-8">
+      <section className="rounded-2xl border-4 border-ingresso bg-white p-3 lg:col-span-8 lg:flex lg:flex-col lg:p-6">
+        <p className="rotulo-display mb-2 text-xs text-suave lg:text-sm">Mapa-múndi · toque num país</p>
+        <WorldMap selected={selected} available={available} className="lg:my-auto" />
+        <p className="mt-2 text-xs text-suave">
+          Mapa: Natural Earth · Dados: Wikidata ·{" "}
+          <Link href="/creditos" className="underline underline-offset-2">
+            Créditos das imagens
+          </Link>
+        </p>
+      </section>
 
-          <div className="flex min-h-14 items-center justify-between rounded-xl border border-linha bg-papel px-4">
-            <span className="flex items-center gap-3 font-display text-xl font-semibold text-estadio">
-              <FlagBR /> {country}
-            </span>
-            <span className="rotulo-display text-xs text-suave">País selecionado</span>
-          </div>
+      <aside className="flex flex-col gap-4 lg:col-span-4">
+        <CountrySelect countries={countries} selected={selected} />
 
-          <div className="flex items-center justify-between">
-            <h2 className="titulo-display text-2xl text-estadio">Estádios do {country}</h2>
-            <span className="rounded-full border border-linha bg-white px-3 py-1 text-xs font-semibold text-estadio">
-              ▾ Maior capacidade
-            </span>
-          </div>
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="titulo-display text-2xl text-estadio">
+            Estádios: {country?.name ?? selected}
+          </h2>
+          <span className="shrink-0 text-sm text-suave">{top.total} no catálogo</span>
+        </div>
 
+        {top.items.length ? (
           <ol className="flex flex-col gap-3">
-            {stadiums.map((s, i) => (
-              <li
-                key={s.id}
-                className="grid grid-cols-[auto_auto_1fr_auto] items-center gap-3 rounded-xl border border-linha bg-white p-3"
-              >
-                <span className="grid size-10 place-items-center rounded-lg bg-estadio font-display text-lg font-bold text-ingresso">
-                  {i + 1}º
-                </span>
-                <KitIcon name="stadium" size={28} />
-                <span className="min-w-0">
-                  <span className="block truncate font-semibold text-estadio">{s.name}</span>
-                  <span className="block text-sm text-suave">{s.city}</span>
-                </span>
-                <span className="text-right">
-                  <span className="block font-display text-xl font-bold text-estadio">{capacity.format(s.capacity)}</span>
-                  <span className="block text-xs text-suave">lugares</span>
-                </span>
+            {top.items.map((s, i) => (
+              <li key={s.id}>
+                <StadiumRow stadium={s} position={i + 1} />
               </li>
             ))}
           </ol>
-
-          <ButtonLink href="/app/mapa" className="border-2 border-estadio text-lg">
-            Ver todos os estádios <KitIcon name="arrow-right" size={20} />
-          </ButtonLink>
-
-          <p className="text-xs text-suave">
-            Capacidades demonstrativas. Seleção de país e mapa navegável chegam na Fase 4.
+        ) : (
+          <p className="rounded-xl border border-dashed border-linha p-4 text-sm text-suave">
+            Ainda não há estádios deste país no catálogo.
           </p>
-        </aside>
+        )}
+
+        <Link
+          href={`/app/estadios?pais=${selected}`}
+          className="flex min-h-12 items-center justify-between rounded-xl border-2 border-estadio bg-ingresso px-5 font-display text-lg font-semibold text-estadio hover:bg-ingresso-escuro"
+        >
+          Ver todos os estádios <KitIcon name="arrow-right" size={20} />
+        </Link>
+      </aside>
+    </div>
+  );
+}
+
+function MapaSkeleton() {
+  return (
+    <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:gap-8" aria-busy>
+      <div className="aspect-[720/320] animate-pulse rounded-2xl bg-white/60 lg:col-span-8" />
+      <div className="flex flex-col gap-3 lg:col-span-4">
+        {Array.from({ length: 5 }, (_, i) => (
+          <div key={i} className="h-16 animate-pulse rounded-xl bg-white/60" />
+        ))}
       </div>
     </div>
   );

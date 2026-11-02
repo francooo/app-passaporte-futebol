@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 import { signOutAction } from "@/app/(auth)/actions";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,9 @@ export default function PerfilPage() {
               </li>
             ))}
           </ul>
+          <Link href="/creditos" className="text-sm font-semibold text-estadio underline underline-offset-4">
+            Créditos das imagens e fontes de dados
+          </Link>
         </section>
       </div>
     </div>
