@@ -1,2 +1,3 @@
-# App Expo: não faz parte do deploy do web
-mobile
+# App Expo (só a pasta da raiz): não faz parte do deploy do web.
+# A barra inicial é obrigatória; sem ela o padrão também exclui src/app/api/mobile.
+/mobile
