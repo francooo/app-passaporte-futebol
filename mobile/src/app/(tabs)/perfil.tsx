@@ -5,6 +5,7 @@ import { KitIcon, type KitIconName } from "@/components/kit-icon";
 import { Screen } from "@/components/screen";
 import { API_URL } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { remoteImage } from "@/lib/remote-image";
 import { colors, font, radius, type } from "@/theme";
 
 const sections: Array<{ title: string; description: string; icon: KitIconName }> = [
@@ -26,7 +27,7 @@ export default function PerfilScreen() {
 
       <View style={styles.card}>
         <View style={styles.avatar}>
-          {user?.image ? <Image source={{ uri: user.image }} style={StyleSheet.absoluteFill} /> : <KitIcon name="profile" size={36} />}
+          {user?.image ? <Image source={remoteImage(user.image)} style={StyleSheet.absoluteFill} /> : <KitIcon name="profile" size={36} />}
         </View>
         <View style={styles.flex}>
           <Text style={[type.titulo, styles.name]} numberOfLines={1}>
