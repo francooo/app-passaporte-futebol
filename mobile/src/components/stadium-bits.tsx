@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { Image, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import type { PhotoCredit, StadiumSummary } from "@shared/api-types";
+import { remoteImage } from "@/lib/remote-image";
 import { colors, font, radius, type } from "@/theme";
 import { KitIcon } from "./kit-icon";
 
@@ -27,7 +28,7 @@ export function Capacity({ value, needsReview, large }: { value: number | null; 
 export function StadiumThumb({ url, size = 48 }: { url: string | null; size?: number }) {
   return (
     <View style={[styles.thumb, { width: size, height: size }]}>
-      {url ? <Image source={{ uri: url }} style={{ width: size, height: size }} resizeMode="cover" /> : <KitIcon name="stadium" size={size * 0.55} />}
+      {url ? <Image source={remoteImage(url)} style={{ width: size, height: size }} resizeMode="cover" /> : <KitIcon name="stadium" size={size * 0.55} />}
     </View>
   );
 }

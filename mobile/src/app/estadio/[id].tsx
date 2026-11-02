@@ -7,6 +7,7 @@ import { KitIcon } from "@/components/kit-icon";
 import { Capacity, PhotoCreditLine, place } from "@/components/stadium-bits";
 import { Ticket } from "@/components/ticket";
 import { catalogApi, useLoad } from "@/lib/catalog";
+import { remoteImage } from "@/lib/remote-image";
 import { colors, font, radius, type } from "@/theme";
 
 function Info({ label, children }: { label: string; children: ReactNode }) {
@@ -46,7 +47,7 @@ export default function EstadioScreen() {
               <View style={styles.photo}>
                 {s.photo ? (
                   <Image
-                    source={{ uri: s.photo.url }}
+                    source={remoteImage(s.photo.url)}
                     style={StyleSheet.absoluteFill}
                     resizeMode="cover"
                     accessibilityLabel={`Foto do ${s.name}`}
