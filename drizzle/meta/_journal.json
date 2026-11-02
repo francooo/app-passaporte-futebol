@@ -15,6 +15,13 @@
       "when": 1793579280985,
       "tag": "0001_api_tokens_e_rate_limit",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793629418723,
+      "tag": "0002_catalogo_estadios",
+      "breakpoints": true
     }
   ]
 }

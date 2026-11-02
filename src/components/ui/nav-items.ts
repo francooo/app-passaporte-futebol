@@ -9,5 +9,8 @@ export const navItems: Array<{ href: string; label: string; icon: KitIconName }>
 ];
 
 export function isActive(pathname: string, href: string) {
-  return href === "/app" ? pathname === href : pathname.startsWith(href);
+  if (href === "/app") return pathname === href;
+  // Lista e detalhe de estádios fazem parte da área do Mapa
+  if (href === "/app/mapa") return pathname.startsWith(href) || pathname.startsWith("/app/estadios");
+  return pathname.startsWith(href);
 }

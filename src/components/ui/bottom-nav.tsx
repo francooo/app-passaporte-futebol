@@ -8,7 +8,11 @@ import { isActive, navItems } from "./nav-items";
 
 /** Barra persistente Home → Mapa → Passaporte → Perfil (mobile e tablet). */
 export function BottomNav() {
-  const pathname = usePathname();
+  return <BottomNavView pathname={usePathname()} />;
+}
+
+/** Versão sem leitura da URL (fallback de <Suspense> em rotas dinâmicas): nenhuma aba destacada. */
+export function BottomNavView({ pathname }: { pathname: string | null }) {
   return (
     <nav
       aria-label="Navegação principal"
@@ -16,7 +20,7 @@ export function BottomNav() {
     >
       <ul className="mx-auto grid max-w-xl grid-cols-4">
         {navItems.map((item) => {
-          const active = isActive(pathname, item.href);
+          const active = pathname != null && isActive(pathname, item.href);
           return (
             <li key={item.href}>
               <Link

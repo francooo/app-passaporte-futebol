@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { Image, Linking, StyleSheet, Text, View } from "react-native";
 import { Button } from "@/components/button";
 import { KitIcon, type KitIconName } from "@/components/kit-icon";
 import { Screen } from "@/components/screen";
+import { API_URL } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { colors, font, radius, type } from "@/theme";
 
@@ -55,6 +56,10 @@ export default function PerfilScreen() {
           </View>
         ))}
       </View>
+
+      <Text style={styles.credits} accessibilityRole="link" onPress={() => Linking.openURL(`${API_URL}/creditos`)}>
+        Créditos das imagens e fontes de dados
+      </Text>
 
       <Button
         variant="secundario"
@@ -120,4 +125,5 @@ const styles = StyleSheet.create({
   itemIcon: { width: 48, height: 48, borderRadius: 12, backgroundColor: colors.partida, alignItems: "center", justifyContent: "center" },
   itemTitle: { fontSize: 20 },
   soon: { fontSize: 11, color: colors.suave, marginTop: 6 },
+  credits: { fontFamily: font.sansSemi, fontSize: 14, color: colors.estadio, textDecorationLine: "underline" },
 });

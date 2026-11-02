@@ -30,12 +30,3 @@ export const demoNearby = [
   { id: "neo-quimica", name: "Neo Química Arena", distanceKm: 18.9, photo: null },
 ];
 
-/** Capacidades aproximadas, só para layout (confirmar com fonte oficial antes de publicar). */
-export const demoCountryRanking = {
-  country: "Brasil",
-  stadiums: [
-    { id: "maracana", name: "Maracanã", city: "Rio de Janeiro", capacity: 78838 },
-    { id: "mane-garrincha", name: "Mané Garrincha", city: "Brasília", capacity: 72788 },
-    { id: "morumbis", name: "MorumBIS", city: "São Paulo", capacity: 66795 },
-  ],
-};

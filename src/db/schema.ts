@@ -122,6 +122,18 @@ export const rateLimits = pgTable("rate_limits", {
 
 // ── Catálogo ─────────────────────────────────────────────────────────────────
 
+/** Países do catálogo (sincronizados do Wikidata). */
+export const countries = pgTable("countries", {
+  /** ISO 3166-1 alfa-3 */
+  iso3: text("iso3").primaryKey(),
+  iso2: text("iso2"),
+  namePt: text("name_pt").notNull(),
+  wikidataId: text("wikidata_id"),
+  stadiumCount: integer("stadium_count").notNull().default(0),
+  lastSyncedAt: timestamp("last_synced_at", { mode: "date" }),
+  syncError: text("sync_error"),
+});
+
 export const stadiums = pgTable(
   "stadiums",
   {
@@ -134,14 +146,32 @@ export const stadiums = pgTable(
     lat: doublePrecision("lat"),
     lng: doublePrecision("lng"),
     capacity: integer("capacity"),
+    /** Capacidade incerta na fonte (vários valores sem data): exibir "a confirmar". */
+    capacityNeedsReview: boolean("capacity_needs_review").notNull().default(false),
+    /** Correção manual (moderação); a sincronização nunca sobrescreve. */
+    capacityOverride: integer("capacity_override"),
+    address: text("address"),
+    /** Ex.: "openstreetmap" — exige atribuição na tela. */
+    addressSource: text("address_source"),
+    openedOn: date("opened_on", { mode: "date" }),
+    clubs: text("clubs").array(),
+    website: text("website"),
     photoUrl: text("photo_url"),
+    photoAuthor: text("photo_author"),
+    photoLicense: text("photo_license"),
+    photoLicenseUrl: text("photo_license_url"),
+    photoPageUrl: text("photo_page_url"),
+    wikidataId: text("wikidata_id").unique(),
     source: text("source"),
     sourceUpdatedAt: date("source_updated_at", { mode: "date" }),
     status: statusEnum("status").notNull().default("pending"),
     createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
-  (t) => [index("stadiums_country_idx").on(t.country), index("stadiums_name_idx").on(t.name)],
+  (t) => [
+    index("stadiums_country_idx").on(t.country, t.capacity),
+    index("stadiums_name_idx").on(t.name),
+  ],
 );
 
 export const teams = pgTable(

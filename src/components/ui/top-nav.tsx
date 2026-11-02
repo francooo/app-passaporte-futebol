@@ -11,7 +11,11 @@ import { isActive, navItems } from "./nav-items";
 
 /** Barra superior do desktop (≥ lg). `account` recebe o avatar, que lê a sessão. */
 export function TopNav({ account }: { account: ReactNode }) {
-  const pathname = usePathname();
+  return <TopNavView account={account} pathname={usePathname()} />;
+}
+
+/** Versão sem leitura da URL (fallback de <Suspense> em rotas dinâmicas): nenhuma aba destacada. */
+export function TopNavView({ account, pathname }: { account: ReactNode; pathname: string | null }) {
   return (
     <header className="sticky top-0 z-40 hidden border-b-2 border-[#E5DFAF] bg-[#FFFEF8]/95 shadow-[0_3px_9px_#123A3210] backdrop-blur lg:block">
       <div className="mx-auto flex h-20 max-w-7xl items-center gap-8 px-8">
@@ -22,7 +26,7 @@ export function TopNav({ account }: { account: ReactNode }) {
         <nav aria-label="Navegação principal" className="h-full">
           <ul className="flex h-full items-stretch gap-1">
             {navItems.map((item) => {
-              const active = isActive(pathname, item.href);
+              const active = pathname != null && isActive(pathname, item.href);
               return (
                 <li key={item.href}>
                   <Link
