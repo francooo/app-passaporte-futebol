@@ -18,9 +18,17 @@ cp .env.example .env.local   # preencher as variáveis
 npm run dev                  # http://localhost:3000
 ```
 
+## App mobile
+
+O app Android (Expo) fica em [`mobile/`](mobile/README.md) e usa a API `src/app/api/mobile/*` deste projeto.
+Código comum aos dois (cores, validações, tipos da API) fica em `shared/`.
+
 ## Estrutura
 
 ```
+shared/                tokens, schemas zod e tipos da API (web + mobile)
+mobile/                app Expo (ver mobile/README.md)
+src/app/api/mobile/    API REST com token para o app
 src/app/(auth)/        login, cadastro, recuperar-senha
 src/app/(app)/app/     home, mapa, passaporte, perfil (barra de 4 abas)
 src/components/ui/     design system: Ticket, Stamp, StampCard, BottomNav, Button, TextField
