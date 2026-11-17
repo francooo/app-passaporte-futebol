@@ -6,6 +6,7 @@ import { countries, stadiums } from "@/db/schema";
 import { fillAddress } from "./address";
 import { commonsThumb } from "./rules";
 import { hasUsefulData } from "./filters";
+import { upcomingByStadium } from "@/lib/matches/queries";
 
 /**
  * Consultas do catálogo usadas pelos Server Components do web e pela API (src/app/api/catalog/*).
@@ -216,5 +217,11 @@ export async function nearbyStadiums(lat: number, lng: number, radiusKm = 100, l
     )
     .orderBy(distance)
     .limit(limit);
-  return rows.map((r) => ({ ...toSummary(r), distanceKm: Math.round(Number(r.distanceKm) * 10) / 10 }));
+  // Próximos jogos (14 dias) nesses estádios, para a lista do registro
+  const upcoming = await upcomingByStadium(rows.map((r) => r.id));
+  return rows.map((r) => ({
+    ...toSummary(r),
+    distanceKm: Math.round(Number(r.distanceKm) * 10) / 10,
+    upcoming: upcoming.get(r.id) ?? [],
+  }));
 }

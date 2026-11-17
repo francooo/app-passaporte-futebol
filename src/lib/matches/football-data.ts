@@ -75,4 +75,7 @@ export const footballData = {
     get<{ matches: FdMatch[] }>(`/competitions/${code}/matches?status=FINISHED${season ? `&season=${season}` : ""}`).then(
       (r) => r.matches,
     ),
+  /** Todas as partidas da competição entre as datas ("AAAA-MM-DD"), em qualquer status. */
+  matchesBetween: (code: string, dateFrom: string, dateTo: string) =>
+    get<{ matches: FdMatch[] }>(`/competitions/${code}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`).then((r) => r.matches),
 };

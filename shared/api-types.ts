@@ -112,7 +112,21 @@ export type MatchResult = {
 
 export type CompetitionOption = { code: string; name: string; emblemUrl: string | null };
 
-export type NearbyStadium = StadiumSummary & { distanceKm: number };
+/** Partida agendada (ainda não jogada) num estádio do catálogo. */
+export type UpcomingMatch = {
+  id: string;
+  /** ISO (UTC); o cliente formata no fuso do aparelho. */
+  utcDate: string;
+  competition: { code: string; name: string };
+  home: TeamRef;
+  away: TeamRef;
+};
+
+export type NearbyStadium = StadiumSummary & {
+  distanceKm: number;
+  /** Partidas agendadas nos próximos 14 dias no estádio (até 3). Ausente em versões antigas da API. */
+  upcoming?: UpcomingMatch[];
+};
 
 export type FanStats = {
   countries: number;

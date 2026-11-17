@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ScrollViewInstance } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import type { CompetitionOption, MatchResult, StadiumSummary, VisitDetail } from "@shared/api-types";
+import type { CompetitionOption, MatchResult, NearbyStadium, StadiumSummary, VisitDetail } from "@shared/api-types";
 import { PHOTO_LIMITS, type VisitInput } from "@shared/schemas";
 import { Button } from "@/components/button";
 import { KitIcon } from "@/components/kit-icon";
@@ -13,6 +13,7 @@ import { Stamp } from "@/components/stamp";
 import { TextField } from "@/components/text-field";
 import { Ticket } from "@/components/ticket";
 import { TeamInput, type ManualTeam } from "@/components/team-input";
+import { UpcomingMatches } from "@/components/upcoming-matches";
 import { Chip, Scoreline } from "@/components/visit-bits";
 import { ApiRequestError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -300,7 +301,8 @@ function KindToggle({ value, onChange }: { value: Kind; onChange: (k: Kind) => v
 function StadiumPicker({ stadium, onChange }: { stadium: StadiumSummary | null; onChange: (s: StadiumSummary | null) => void }) {
   const { token } = useAuth();
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Array<StadiumSummary & { distanceKm?: number }> | null>(null);
+  const [results, setResults] = useState<Array<StadiumSummary & Partial<Pick<NearbyStadium, "distanceKm" | "upcoming">>> | null>(null);
+  const nearby = results?.some((r) => r.distanceKm != null) ?? false;
   const [state, setState] = useState<{ loading: boolean; error: string | null; label: string | null }>({ loading: false, error: null, label: null });
 
   async function search() {
@@ -323,7 +325,12 @@ function StadiumPicker({ stadium, onChange }: { stadium: StadiumSummary | null; 
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const list = await visitsApi(token).nearbyStadiums(pos.coords.latitude, pos.coords.longitude);
       setResults(list);
-      setState({ loading: false, error: list.length ? null : "Nenhum estádio do catálogo a até 50 km. Busque pelo nome.", label: "Estádios perto de você" });
+      const withGames = list.filter((x) => x.upcoming?.length).length;
+      setState({
+        loading: false,
+        error: list.length ? null : "Nenhum estádio do catálogo a até 50 km. Busque pelo nome.",
+        label: `Estádios perto de você${withGames ? ` · ${withGames} com ${withGames === 1 ? "jogo" : "jogos"} em 14 dias` : ""}`,
+      });
     } catch {
       setState({ loading: false, error: "Não foi possível obter sua localização. Busque pelo nome.", label: null });
     }
@@ -380,27 +387,32 @@ function StadiumPicker({ stadium, onChange }: { stadium: StadiumSummary | null; 
           {state.label && <Text style={[type.rotulo, styles.small]}>{state.label}</Text>}
           {results.length === 0 && !state.error && <Text style={type.suave}>Nenhum estádio encontrado. Tente outro nome ou a cidade.</Text>}
           {results.slice(0, 12).map((s) => (
-            <Pressable
-              key={s.id}
-              onPress={() => onChange(s)}
-              accessibilityRole="button"
-              accessibilityLabel={`${s.name}, ${place(s)}`}
-              style={({ pressed }) => [styles.result, pressed && { opacity: 0.85 }]}
-            >
-              <StadiumThumb url={s.thumbUrl} size={44} />
-              <View style={styles.flex}>
-                <Text style={styles.resultName} numberOfLines={1}>
-                  {s.name}
+            <View key={s.id} style={styles.resultCard}>
+              <Pressable
+                onPress={() => onChange(s)}
+                accessibilityRole="button"
+                accessibilityLabel={`${s.name}, ${place(s)}${s.upcoming?.length ? `, ${s.upcoming.length} ${s.upcoming.length === 1 ? "jogo" : "jogos"} nos próximos 14 dias` : ""}`}
+                style={({ pressed }) => [styles.resultRow, pressed && { opacity: 0.85 }]}
+              >
+                <StadiumThumb url={s.thumbUrl} size={44} />
+                <View style={styles.flex}>
+                  <Text style={styles.resultName} numberOfLines={1}>
+                    {s.name}
+                  </Text>
+                  <Text style={type.suave} numberOfLines={1}>
+                    {place(s)} · {s.country}
+                  </Text>
+                </View>
+                <Text style={type.suave}>
+                  {s.distanceKm != null ? `${number.format(s.distanceKm)} km` : s.capacity ? number.format(s.capacity) : ""}
                 </Text>
-                <Text style={type.suave} numberOfLines={1}>
-                  {place(s)} · {s.country}
-                </Text>
-              </View>
-              <Text style={type.suave}>
-                {s.distanceKm != null ? `${number.format(s.distanceKm)} km` : s.capacity ? number.format(s.capacity) : ""}
-              </Text>
-            </Pressable>
+              </Pressable>
+              {s.upcoming && s.upcoming.length > 0 && <UpcomingMatches matches={s.upcoming} />}
+            </View>
           ))}
+          {nearby && results.length > 0 && (
+            <Text style={[type.suave, styles.small]}>Jogos das principais ligas (football-data.org) nos próximos 14 dias, no estádio do mandante.</Text>
+          )}
         </View>
       )}
     </View>
@@ -672,16 +684,8 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, minWidth: 0, paddingVertical: 12, fontFamily: font.sans, fontSize: 16, color: colors.tinta },
   dark: { backgroundColor: colors.estadio, borderBottomColor: colors.estadio },
   darkText: { color: colors.marfim },
-  result: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    padding: 10,
-    borderRadius: radius.campo,
-    borderWidth: 1,
-    borderColor: colors.linha,
-    backgroundColor: colors.branco,
-  },
+  resultCard: { padding: 10, borderRadius: radius.campo, borderWidth: 1, borderColor: colors.linha, backgroundColor: colors.branco },
+  resultRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   resultName: { fontFamily: font.displaySemi, fontSize: 17, color: colors.estadio },
   selected: {
     flexDirection: "row",

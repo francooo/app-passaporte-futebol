@@ -12,6 +12,7 @@ import { Ticket } from "@/components/ui/ticket";
 import { api, ApiFailure, formatDay, todayIso, uploadPhoto } from "@/lib/client-api";
 import { cn } from "@/lib/cn";
 import { Scoreline, TeamCrest } from "./team-crest";
+import { UpcomingMatches } from "./upcoming-matches";
 
 type Kind = "visit" | "match";
 type Step = 1 | 2 | 3;
@@ -244,7 +245,8 @@ function StepStadium({
   onNext: () => void;
 }) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Array<StadiumSummary & { distanceKm?: number }> | null>(null);
+  const [results, setResults] = useState<Array<StadiumSummary & Partial<Pick<NearbyStadium, "distanceKm" | "upcoming">>> | null>(null);
+  const nearby = results?.some((r) => r.distanceKm != null) ?? false;
   const [state, setState] = useState<{ loading: boolean; error: string | null; label: string | null }>({ loading: false, error: null, label: null });
   const dateId = useId();
 
@@ -278,10 +280,11 @@ function StepStadium({
             `/api/catalog/stadiums/nearby?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}&raio=50`,
           );
           setResults(list);
+          const withGames = list.filter((s) => s.upcoming?.length).length;
           setState({
             loading: false,
             error: list.length ? null : "Nenhum estádio do catálogo a até 50 km. Busque pelo nome.",
-            label: "Estádios perto de você",
+            label: `Estádios perto de você${withGames ? ` · ${withGames} com ${withGames === 1 ? "jogo" : "jogos"} nos próximos 14 dias` : ""}`,
           });
         } catch (error) {
           setState({ loading: false, error: (error as Error).message, label: null });
@@ -360,11 +363,11 @@ function StepStadium({
                   ) : (
                     <ul className="flex max-h-[26rem] flex-col gap-2 overflow-y-auto pr-1">
                       {results.map((s) => (
-                        <li key={s.id}>
+                        <li key={s.id} className="rounded-xl border border-linha bg-white p-3 transition-shadow hover:shadow-md">
                           <button
                             type="button"
                             onClick={() => onStadium(s)}
-                            className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl border border-linha bg-white p-3 text-left transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-estadio"
+                            className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg text-left focus-visible:ring-2 focus-visible:ring-estadio"
                           >
                             <StadiumThumb url={s.thumbUrl} className="size-12 rounded-lg" sizes="48px" />
                             <span className="min-w-0">
@@ -377,9 +380,13 @@ function StepStadium({
                               {s.distanceKm != null ? `${number.format(Math.round(s.distanceKm * 10) / 10)} km` : s.capacity ? `${number.format(s.capacity)} lugares` : ""}
                             </span>
                           </button>
+                          {s.upcoming && s.upcoming.length > 0 && <UpcomingMatches matches={s.upcoming} />}
                         </li>
                       ))}
                     </ul>
+                  )}
+                  {nearby && results.length > 0 && (
+                    <p className="text-xs text-suave">Jogos das principais ligas (football-data.org) nos próximos 14 dias, no estádio do mandante.</p>
                   )}
                 </>
               )}
