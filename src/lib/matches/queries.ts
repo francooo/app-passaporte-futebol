@@ -1,9 +1,10 @@
 import "server-only";
-import { and, asc, desc, eq, gte, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, or, sql, type SQL } from "drizzle-orm";
 import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
-import type { CompetitionOption, MatchResult, TeamRef } from "@shared/api-types";
+import type { CompetitionOption, MatchResult, TeamRef, UpcomingMatch } from "@shared/api-types";
 import { db } from "@/db";
 import { competitions, matches, teams } from "@/db/schema";
+import { groupByStadium, UPCOMING_DAYS, UPCOMING_STATUSES } from "./upcoming";
 
 const home = alias(teams, "home_team");
 const away = alias(teams, "away_team");
@@ -120,4 +121,44 @@ export async function searchTeams(term: string, userId: string | null, limit = 1
     .orderBy(sql`${teams.provider} is null`, asc(teams.name))
     .limit(limit);
   return rows.map((r) => ({ id: r.id, name: r.shortName ?? r.name, crestUrl: r.crestUrl }));
+}
+
+/** Partidas agendadas nos próximos 14 dias nos estádios informados (até 3 por estádio, por data). */
+export async function upcomingByStadium(stadiumIds: string[], now = new Date()): Promise<Map<string, UpcomingMatch[]>> {
+  if (!stadiumIds.length) return new Map();
+  const rows = await db
+    .select({
+      id: matches.id,
+      utcDate: matches.utcDate,
+      stadiumId: matches.stadiumId,
+      competition: { code: competitions.code, name: competitions.name },
+      home: { id: home.id, name: home.shortName, fullName: home.name, crestUrl: home.crestUrl },
+      away: { id: away.id, name: away.shortName, fullName: away.name, crestUrl: away.crestUrl },
+    })
+    .from(matches)
+    .innerJoin(competitions, eq(competitions.code, matches.competitionCode))
+    .innerJoin(home, eq(home.id, matches.homeTeamId))
+    .innerJoin(away, eq(away.id, matches.awayTeamId))
+    .where(
+      and(
+        inArray(matches.stadiumId, stadiumIds),
+        inArray(matches.status, [...UPCOMING_STATUSES]),
+        gte(matches.utcDate, now),
+        lte(matches.utcDate, new Date(now.getTime() + UPCOMING_DAYS * 86_400_000)),
+      ),
+    )
+    .orderBy(asc(matches.utcDate));
+
+  const team = (t: { id: string; name: string | null; fullName: string; crestUrl: string | null }): TeamRef => ({
+    id: t.id,
+    name: t.name ?? t.fullName,
+    crestUrl: t.crestUrl,
+  });
+  const groups = groupByStadium(rows.map((r) => ({ ...r, utcDate: r.utcDate.toISOString() })));
+  return new Map(
+    [...groups].map(([stadiumId, list]) => [
+      stadiumId,
+      list.map((r) => ({ id: r.id, utcDate: r.utcDate, competition: r.competition, home: team(r.home), away: team(r.away) })),
+    ]),
+  );
 }

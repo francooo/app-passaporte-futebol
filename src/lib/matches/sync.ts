@@ -1,9 +1,10 @@
 import "server-only";
-import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, asc, between, eq, inArray, isNotNull, notInArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { competitions, matches, stadiums, teams } from "@/db/schema";
-import { footballData, FootballDataError, type FdTeam } from "./football-data";
+import { footballData, FootballDataError, type FdMatch, type FdTeam } from "./football-data";
 import { areaToIso3, findTeamStadium, type CatalogStadium } from "./link";
+import { UPCOMING_STATUSES, upcomingWindow } from "./upcoming";
 
 const PROVIDER = "football-data";
 
@@ -55,6 +56,27 @@ async function upsertTeam(t: FdTeam, fallbackCountry: string | null, linked: Map
   return result;
 }
 
+/** Upsert da partida pelo id do provedor (o mesmo registro passa de agendado a encerrado). */
+async function upsertMatch(code: string, m: FdMatch, country: string | null, linked: Map<string, { id: string; stadiumId: string | null }>) {
+  const home = await upsertTeam(m.homeTeam, country, linked);
+  const away = await upsertTeam(m.awayTeam, country, linked);
+  const values = {
+    competitionCode: code,
+    utcDate: new Date(m.utcDate),
+    status: m.status,
+    homeTeamId: home.id,
+    awayTeamId: away.id,
+    homeScore: m.score.fullTime.home,
+    awayScore: m.score.fullTime.away,
+    // Partida no estádio do mandante (o provedor raramente informa o local do jogo)
+    stadiumId: home.stadiumId,
+  };
+  await db
+    .insert(matches)
+    .values({ ...values, provider: PROVIDER, providerId: String(m.id) })
+    .onConflictDoUpdate({ target: [matches.provider, matches.providerId], set: values });
+}
+
 /**
  * Importa uma competição: dados, times (com escudo e estádio) e partidas encerradas
  * da temporada atual e da anterior. Partidas: upsert pelo id do provedor.
@@ -86,23 +108,7 @@ export async function syncCompetition(code: string) {
 
       const list = await footballData.finishedMatches(code, season);
       for (const m of list) {
-        const home = await upsertTeam(m.homeTeam, country, linked);
-        const away = await upsertTeam(m.awayTeam, country, linked);
-        const values = {
-          competitionCode: code,
-          utcDate: new Date(m.utcDate),
-          status: m.status,
-          homeTeamId: home.id,
-          awayTeamId: away.id,
-          homeScore: m.score.fullTime.home,
-          awayScore: m.score.fullTime.away,
-          // Partida no estádio do mandante (o provedor raramente informa o local do jogo)
-          stadiumId: home.stadiumId,
-        };
-        await db
-          .insert(matches)
-          .values({ ...values, provider: PROVIDER, providerId: String(m.id) })
-          .onConflictDoUpdate({ target: [matches.provider, matches.providerId], set: values });
+        await upsertMatch(code, m, country, linked);
         imported++;
       }
       seasons.push(season);
@@ -128,4 +134,36 @@ export async function competitionsDueForSync(all: readonly string[], limit: numb
     .orderBy(asc(competitions.lastSyncedAt));
   const synced = new Map(known.map((k) => [k.code, k.at?.getTime() ?? 0]));
   return [...all].sort((a, b) => (synced.get(a) ?? -1) - (synced.get(b) ?? -1)).slice(0, limit);
+}
+
+/**
+ * Próximos jogos (14 dias) de uma competição já importada, para "Estádios perto de você" no registro.
+ * Uma chamada ao provedor. Jogos agendados que sumiram da janela (adiados ou remarcados) deixam de
+ * contar como agendados; se voltarem, o upsert restaura o status.
+ */
+export async function syncUpcoming(code: string, now = new Date()) {
+  const [comp] = await db.select({ country: competitions.country }).from(competitions).where(eq(competitions.code, code)).limit(1);
+  if (!comp) throw new Error(`Competição ${code} ainda não importada: rode o sync completo antes.`);
+
+  const { from, to } = upcomingWindow(now);
+  // Mata-mata ainda sem confronto definido vem com os times nulos: não há o que mostrar
+  const list = (await footballData.matchesBetween(code, from, to)).filter((m) => m.homeTeam?.id != null && m.awayTeam?.id != null);
+  const linked = new Map<string, { id: string; stadiumId: string | null }>();
+  for (const m of list) await upsertMatch(code, m, comp.country, linked);
+
+  const seen = list.map((m) => String(m.id));
+  await db
+    .update(matches)
+    .set({ status: "POSTPONED" })
+    .where(
+      and(
+        eq(matches.competitionCode, code),
+        eq(matches.provider, PROVIDER),
+        inArray(matches.status, [...UPCOMING_STATUSES]),
+        between(matches.utcDate, new Date(`${from}T00:00:00Z`), new Date(`${to}T23:59:59Z`)),
+        seen.length ? notInArray(matches.providerId, seen) : undefined,
+      ),
+    );
+
+  return { code, total: list.length, scheduled: list.filter((m) => (UPCOMING_STATUSES as readonly string[]).includes(m.status)).length };
 }
