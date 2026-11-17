@@ -12,7 +12,7 @@ import type {
   VisitPhoto,
 } from "@shared/api-types";
 import { PHOTO_LIMITS, type ProfileInput, type VisitInput } from "@shared/schemas";
-import { api, API_URL } from "./api";
+import { api, API_URL, ApiRequestError } from "./api";
 
 /**
  * Registros, partidas, estatísticas e perfil (mesmas rotas /api/* do web, com o token Bearer).
@@ -27,10 +27,19 @@ export function visitsApi(token: string | null) {
     create: (input: VisitInput) => api<VisitDetail>("/api/visits", { method: "POST", body: input, token }),
     remove: (id: string) => api<null>(`/api/visits/${encodeURIComponent(id)}`, { method: "DELETE", token }),
     addPhoto: async (visitId: string, photo: PickedPhoto) => {
-      const form = new FormData();
-      // No React Native o arquivo vai como { uri, name, type }
-      form.append("foto", { uri: await shrinkPhoto(photo), name: "foto.jpg", type: "image/jpeg" } as unknown as Blob);
-      return api<VisitPhoto>(`/api/visits/${encodeURIComponent(visitId)}/photos`, { method: "POST", body: form, token });
+      const send = async (maxSide: number, compress: number) => {
+        const form = new FormData();
+        // No React Native o arquivo vai como { uri, name, type }
+        form.append("foto", { uri: await shrinkPhoto(photo.uri, maxSide, compress), name: "foto.jpg", type: "image/jpeg" } as unknown as Blob);
+        return api<VisitPhoto>(`/api/visits/${encodeURIComponent(visitId)}/photos`, { method: "POST", body: form, token });
+      };
+      try {
+        return await send(PHOTO_LIMITS.clientMaxSide, 0.82);
+      } catch (error) {
+        // Recusada por tamanho (limite do servidor/Vercel): tenta de novo bem menor
+        if (error instanceof ApiRequestError && error.status === 413) return send(1280, 0.7);
+        throw error;
+      }
     },
     removePhoto: (id: string) => api<null>(`/api/photos/${encodeURIComponent(id)}`, { method: "DELETE", token }),
     stats: (teamId?: string | null) => get<FanStats>(`/api/stats${teamId ? `?time=${encodeURIComponent(teamId)}` : ""}`),
@@ -54,18 +63,22 @@ export function privatePhoto(path: string, token: string | null) {
 export type PickedPhoto = { uri: string; width: number; height: number };
 
 /**
- * Reduz a foto (lado maior ≤ 2000 px) e regrava em JPEG antes do envio, como o web faz no navegador.
+ * Reduz a foto (lado maior ≤ maxSide) e regrava em JPEG antes do envio, como o web faz no navegador.
+ * A redução acontece já na leitura (maxWidth/maxHeight): não depende das dimensões informadas pelo
+ * seletor, que podem vir 0 em alguns Android, e evita carregar fotos de 50 MP inteiras na memória.
  * Regravar também converte HEIC (iPhone) para um formato que o servidor aceita.
  */
-async function shrinkPhoto({ uri, width, height }: PickedPhoto) {
-  const context = ImageManipulator.manipulate(uri);
-  const max = PHOTO_LIMITS.clientMaxSide;
-  if (width > max || height > max) {
-    context.resize(width >= height ? { width: max, height: null } : { width: null, height: max });
-  }
+async function shrinkPhoto(uri: string, maxSide: number, compress: number) {
+  const context = ImageManipulator.manipulate(uri, { maxWidth: maxSide, maxHeight: maxSide });
   const image = await context.renderAsync();
-  const result = await image.saveAsync({ format: SaveFormat.JPEG, compress: 0.82 });
+  const result = await image.saveAsync({ format: SaveFormat.JPEG, compress });
   return result.uri;
+}
+
+/** Mensagem para a tela quando uma foto não é enviada. */
+export function photoErrorMessage(error: unknown) {
+  if (error instanceof ApiRequestError) return error.message;
+  return "Não foi possível preparar a foto no aparelho. Tente outra imagem.";
 }
 
 const dayFormat = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });

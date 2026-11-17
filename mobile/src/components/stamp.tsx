@@ -57,12 +57,12 @@ export function Stamp({ name, place, photo, tone = "verde", size = 80, style }: 
             <Path d="M46 70h28M50 70v8m10-8v8m10-8v8" stroke={color} strokeWidth="1.6" />
           </G>
         )}
-        <Text fill={color} fontSize={top.size} letterSpacing={top.spacing} fontFamily={font.display}>
+        <Text fill={color} fontSize={top.size} letterSpacing={top.spacing} fontFamily={font.display} textAnchor="middle">
           <TextPath href={`#${uid}top`} startOffset="50%" textAnchor="middle">
             {name.toUpperCase()}
           </TextPath>
         </Text>
-        <Text fill={color} fontSize={bottom.size} letterSpacing={bottom.spacing} fontFamily={font.display}>
+        <Text fill={color} fontSize={bottom.size} letterSpacing={bottom.spacing} fontFamily={font.display} textAnchor="middle">
           <TextPath href={`#${uid}bottom`} startOffset="50%" textAnchor="middle">
             {place.toUpperCase()}
           </TextPath>

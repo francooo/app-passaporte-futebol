@@ -12,12 +12,12 @@ import { Scoreline } from "@/components/visit-bits";
 import { useAuth } from "@/lib/auth-context";
 import { useLoad } from "@/lib/catalog";
 import { remoteImage } from "@/lib/remote-image";
-import { formatDay, privatePhoto, visitsApi } from "@/lib/visits";
+import { formatDay, photoErrorMessage, privatePhoto, visitsApi } from "@/lib/visits";
 import { colors, font, radius, type } from "@/theme";
 
 /** Detalhe do carimbo: selo, resultado, anotação, fotos (adicionar/remover) e exclusão. */
 export default function CarimboScreen() {
-  const { id, fotos_falharam } = useLocalSearchParams<{ id: string; fotos_falharam?: string }>();
+  const { id, fotos_falharam, motivo } = useLocalSearchParams<{ id: string; fotos_falharam?: string; motivo?: string }>();
   const { token } = useAuth();
   const api = visitsApi(token);
   const { data: v, error, loading, reload } = useLoad(() => api.get(id), [id, token]);
@@ -32,17 +32,19 @@ export default function CarimboScreen() {
     if (result.canceled) return;
     setActionError(null);
     let failed = 0;
+    let reason = "";
     const list = result.assets.slice(0, free);
     for (const [i, a] of list.entries()) {
       setBusy(`Enviando foto ${i + 1} de ${list.length}…`);
       try {
         await api.addPhoto(v.id, { uri: a.uri, width: a.width, height: a.height });
-      } catch {
+      } catch (error) {
         failed++;
+        reason ||= photoErrorMessage(error);
       }
     }
     setBusy(null);
-    if (failed) setActionError(`${failed} foto(s) não foram enviadas. Tente de novo.`);
+    if (failed) setActionError(`${failed === 1 ? "A foto não foi enviada" : `${failed} fotos não foram enviadas`}: ${reason}`);
     reload();
   }
 
@@ -107,7 +109,10 @@ export default function CarimboScreen() {
         </Pressable>
 
         {fotos_falharam && (
-          <Text style={styles.errorBox}>Carimbo criado, mas {fotos_falharam} foto(s) não foram enviadas. Tente adicioná-las de novo abaixo.</Text>
+          <Text style={styles.errorBox}>
+            Carimbo criado, mas {fotos_falharam === "1" ? "a foto não foi enviada" : `${fotos_falharam} fotos não foram enviadas`}
+            {motivo ? ` (${motivo})` : ""}. Tente adicioná-las de novo abaixo.
+          </Text>
         )}
 
         {loading && !v ? (

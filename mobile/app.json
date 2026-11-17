@@ -2,7 +2,7 @@
   "expo": {
     "name": "Passaporte Esportivo",
     "slug": "passaporte-esportivo",
-    "version": "0.2.1",
+    "version": "0.2.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "passaporteesportivo",
@@ -14,7 +14,7 @@
     },
     "android": {
       "package": "br.com.passaporteesportivo.app",
-      "versionCode": 3,
+      "versionCode": 4,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#123A32"

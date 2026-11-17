@@ -19,7 +19,7 @@ import { ApiRequestError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { catalogApi } from "@/lib/catalog";
 import { remoteImage } from "@/lib/remote-image";
-import { formatDay, maskBrDate, parseBrDate, todayIso, toBrDate, visitsApi, type PickedPhoto } from "@/lib/visits";
+import { formatDay, maskBrDate, parseBrDate, photoErrorMessage, todayIso, toBrDate, visitsApi, type PickedPhoto } from "@/lib/visits";
 import { colors, font, radius, type } from "@/theme";
 
 type Kind = "visit" | "match";
@@ -111,15 +111,17 @@ export default function RegistrarScreen() {
     }
 
     let failed = 0;
+    let reason = "";
     for (const [i, photo] of photos.entries()) {
       setStatus({ busy: true, message: `Enviando foto ${i + 1} de ${photos.length}…`, error: null });
       try {
         await api.addPhoto(visit.id, photo);
-      } catch {
+      } catch (error) {
         failed++;
+        reason ||= photoErrorMessage(error);
       }
     }
-    router.replace({ pathname: "/carimbo/[id]", params: { id: visit.id, ...(failed ? { fotos_falharam: String(failed) } : {}) } });
+    router.replace({ pathname: "/carimbo/[id]", params: { id: visit.id, ...(failed ? { fotos_falharam: String(failed), motivo: reason } : {}) } });
   }
 
   const effectiveDate = date ?? (match ? match.utcDate.slice(0, 10) : null);
