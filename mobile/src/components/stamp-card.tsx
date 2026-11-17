@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View, type ImageSourcePropType } from "react-native";
-import type { VisitKind } from "@/lib/demo-data";
+export type VisitKind = "visit" | "match";
 import { colors, font, radius, type } from "@/theme";
 import { KitIcon } from "./kit-icon";
 import { Stamp } from "./stamp";

@@ -36,6 +36,20 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 160
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "O Passaporte Esportivo usa sua localização para encontrar os estádios perto de você."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O Passaporte Esportivo acessa suas fotos para você adicioná-las aos carimbos.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
       ]
     ],
     "experiments": {

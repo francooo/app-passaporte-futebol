@@ -19,6 +19,9 @@ const tones = { verde: colors.estadio, azul: colors.carimboAzul };
 export function Stamp({ name, place, photo, tone = "verde", size = 80, style }: Props) {
   const color = tones[tone];
   const uid = `stamp${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+  // Nomes longos ("Estádio Jornalista Mário Filho") diminuem a fonte para caber no arco (igual ao web)
+  const top = fit(name, 17, 10);
+  const bottom = fit(place, 22, 9);
 
   return (
     <View
@@ -54,12 +57,12 @@ export function Stamp({ name, place, photo, tone = "verde", size = 80, style }: 
             <Path d="M46 70h28M50 70v8m10-8v8m10-8v8" stroke={color} strokeWidth="1.6" />
           </G>
         )}
-        <Text fill={color} fontSize="10" letterSpacing="1" fontFamily={font.display}>
+        <Text fill={color} fontSize={top.size} letterSpacing={top.spacing} fontFamily={font.display}>
           <TextPath href={`#${uid}top`} startOffset="50%" textAnchor="middle">
             {name.toUpperCase()}
           </TextPath>
         </Text>
-        <Text fill={color} fontSize="9" letterSpacing="1" fontFamily={font.display}>
+        <Text fill={color} fontSize={bottom.size} letterSpacing={bottom.spacing} fontFamily={font.display}>
           <TextPath href={`#${uid}bottom`} startOffset="50%" textAnchor="middle">
             {place.toUpperCase()}
           </TextPath>
@@ -73,4 +76,10 @@ export function Stamp({ name, place, photo, tone = "verde", size = 80, style }: 
       </Svg>
     </View>
   );
+}
+
+/** Tamanho de fonte para o texto caber no arco: até `chars` letras no tamanho base; acima disso, reduz. */
+function fit(text: string, chars: number, base: number) {
+  if (text.length <= chars) return { size: base, spacing: 1 };
+  return { size: Math.max(5.5, (base * chars) / text.length), spacing: 0.4 };
 }

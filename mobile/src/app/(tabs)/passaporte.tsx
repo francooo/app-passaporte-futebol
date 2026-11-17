@@ -1,18 +1,35 @@
-import { StyleSheet, Text, View } from "react-native";
+import { router } from "expo-router";
+import { useState } from "react";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Button } from "@/components/button";
 import { KitIcon } from "@/components/kit-icon";
 import { Screen } from "@/components/screen";
-import { StampCard } from "@/components/stamp-card";
 import { BittenCard, PerforatedFrame } from "@/components/ticket";
-import { demoVisits } from "@/lib/demo-data";
+import { Chip, EmptyState, VisitStamp } from "@/components/visit-bits";
+import { useAuth } from "@/lib/auth-context";
+import { useLoad, useReloadOnFocus } from "@/lib/catalog";
+import { visitsApi } from "@/lib/visits";
 import { colors, font, type } from "@/theme";
 
+const kinds = [
+  { value: "", label: "Todos" },
+  { value: "partida", label: "Partidas" },
+  { value: "visita", label: "Visitas" },
+];
+
 export default function PassaporteScreen() {
-  const stamps = demoVisits.length;
-  const stadiums = new Set(demoVisits.map((v) => v.stadium)).size;
+  const { token } = useAuth();
+  const [tipo, setTipo] = useState("");
+  const [ano, setAno] = useState("");
+  const [competicao, setCompeticao] = useState("");
+  const { data, error, loading, reload } = useLoad(() => visitsApi(token).list({ tipo, ano, competicao }), [token, tipo, ano, competicao]);
+  useReloadOnFocus(reload);
+
+  const filtered = Boolean(tipo || ano || competicao);
+  const add = () => router.push("/registrar");
 
   return (
-    <Screen>
+    <Screen refreshing={loading && !!data} onRefresh={reload}>
       <View>
         <Text style={[type.titulo, styles.title]} accessibilityRole="header">
           Meu Passaporte
@@ -22,24 +39,55 @@ export default function PassaporteScreen() {
 
       <PerforatedFrame bleed style={styles.frame}>
         <BittenCard style={styles.counters}>
-          <Counter value={stamps} label="carimbos" divider />
-          <Counter value={stadiums} label="estádios" />
+          <Counter value={data?.totals.stamps ?? 0} one="carimbo" many="carimbos" divider />
+          <Counter value={data?.totals.stadiums ?? 0} one="estádio" many="estádios" />
         </BittenCard>
 
-        {demoVisits.map((v) => (
-          <StampCard
-            key={v.id}
-            stadium={v.stadium}
-            city={v.city}
-            stateCode={v.stateCode}
-            kind={v.kind}
-            date={v.date}
-            photo={v.photo}
-            tone={v.tone}
-          />
-        ))}
+        {data && data.totals.stamps > 0 && (
+          <View style={styles.filters}>
+            <View style={styles.row}>
+              {kinds.map((k) => (
+                <Chip key={k.label} label={k.label} active={tipo === k.value} onPress={() => setTipo(k.value)} />
+              ))}
+            </View>
+            {data.years.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+                <Chip label="Todos os anos" active={!ano} onPress={() => setAno("")} />
+                {data.years.map((y) => (
+                  <Chip key={y} label={String(y)} active={ano === String(y)} onPress={() => setAno(String(y))} />
+                ))}
+              </ScrollView>
+            )}
+            {data.competitions.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+                <Chip label="Todas as competições" active={!competicao} onPress={() => setCompeticao("")} />
+                {data.competitions.map((c) => (
+                  <Chip key={c} label={c} active={competicao === c} onPress={() => setCompeticao(c)} />
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        )}
 
-        <Button icon={<KitIcon name="camera-ai" size={30} />} style={styles.add}>
+        {loading && !data ? (
+          <ActivityIndicator color={colors.estadio} style={styles.loading} />
+        ) : error ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.error}>{error}</Text>
+            <Button variant="secundario" onPress={reload}>
+              Tentar de novo
+            </Button>
+          </View>
+        ) : data && data.items.length > 0 ? (
+          data.items.map((v) => <VisitStamp key={v.id} visit={v} onPress={() => router.push({ pathname: "/carimbo/[id]", params: { id: v.id } })} />)
+        ) : (
+          <EmptyState
+            title={filtered ? "Nenhum carimbo com esses filtros" : "Seu passaporte está em branco"}
+            text={filtered ? "Mude os filtros para ver outros carimbos." : "Registre a primeira visita a um estádio ou uma partida que você viu ao vivo."}
+          />
+        )}
+
+        <Button icon={<KitIcon name="camera-ai" size={30} />} style={styles.add} onPress={add}>
           Adicionar carimbo
         </Button>
       </PerforatedFrame>
@@ -47,7 +95,8 @@ export default function PassaporteScreen() {
   );
 }
 
-function Counter({ value, label, divider }: { value: number; label: string; divider?: boolean }) {
+function Counter({ value, one, many, divider }: { value: number; one: string; many: string; divider?: boolean }) {
+  const label = value === 1 ? one : many;
   return (
     <View style={[styles.counter, divider && styles.counterDivider]} accessible accessibilityLabel={`${value} ${label}`}>
       <Text style={[type.titulo, styles.counterValue]}>{value}</Text>
@@ -65,5 +114,10 @@ const styles = StyleSheet.create({
   counterDivider: { borderRightWidth: 1, borderRightColor: colors.linha },
   counterValue: { fontSize: 46 },
   counterLabel: { fontFamily: font.displayMedium, fontSize: 20, color: colors.estadio },
+  filters: { gap: 8 },
+  row: { flexDirection: "row", gap: 8 },
+  loading: { paddingVertical: 32 },
+  errorBox: { gap: 12, padding: 16, borderRadius: 16, backgroundColor: colors.marfim },
+  error: { fontFamily: font.sans, fontSize: 15, color: colors.erro },
   add: { borderWidth: 2, borderColor: colors.ingressoEscuro },
 });

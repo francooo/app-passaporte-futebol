@@ -4,11 +4,12 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, font } from "@/theme";
 import { KitIcon, type KitIconName } from "./kit-icon";
 
-/** Mesma ordem e ícones da navegação v05 do web (src/components/ui/nav-items.ts). */
+/** Mesma ordem e ícones da navegação v06 do web (src/components/ui/nav-items.ts). */
 const tabs: Record<string, { label: string; icon: KitIconName }> = {
   home: { label: "Home", icon: "home" },
   mapa: { label: "Mapa", icon: "map" },
   passaporte: { label: "Passaporte", icon: "passport" },
+  estatisticas: { label: "Estatísticas", icon: "stats" },
   perfil: { label: "Perfil", icon: "profile" },
 };
 
@@ -35,7 +36,9 @@ export function TabBar({ state, emitter, navigateToTab, insets }: TabBarProps) {
             style={styles.item}
           >
             <KitIcon name={tab.icon} size={26} style={{ opacity: active ? 1 : 0.8 }} />
-            <Text style={[styles.label, active && styles.labelActive]}>{tab.label}</Text>
+            <Text style={[styles.label, active && styles.labelActive]} numberOfLines={1} adjustsFontSizeToFit>
+              {tab.label}
+            </Text>
             {active && <View style={styles.indicator} />}
           </Pressable>
         );
@@ -57,7 +60,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   item: { flex: 1, minHeight: 64, alignItems: "center", justifyContent: "center", gap: 4 },
-  label: { fontFamily: font.sansBold, fontSize: 12, color: colors.suave },
+  label: { fontFamily: font.sansBold, fontSize: 11, color: colors.suave },
   labelActive: { color: colors.estadio },
   indicator: {
     position: "absolute",

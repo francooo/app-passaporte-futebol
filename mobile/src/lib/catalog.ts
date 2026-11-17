@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CatalogCountry, StadiumDetail, StadiumPage } from "@shared/api-types";
 import { api, ApiRequestError } from "./api";
 
@@ -39,4 +40,18 @@ export function useLoad<T>(load: () => Promise<T>, deps: unknown[]) {
   }, [...deps, attempt]);
 
   return { ...state, reload: useCallback(() => setAttempt((n) => n + 1), []) };
+}
+
+/** Recarrega quando a tela volta ao foco (ex.: depois de criar ou excluir um carimbo), sem repetir a carga inicial. */
+export function useReloadOnFocus(reload: () => void) {
+  const first = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (first.current) {
+        first.current = false;
+        return;
+      }
+      reload();
+    }, [reload]),
+  );
 }
