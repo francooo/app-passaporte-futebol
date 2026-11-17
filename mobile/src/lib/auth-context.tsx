@@ -9,6 +9,8 @@ type Status = "loading" | "signedOut" | "signedIn";
 type AuthContextValue = {
   status: Status;
   user: ApiUser | null;
+  /** Token Bearer das rotas autenticadas (/api/visits, /api/stats…). */
+  token: string | null;
   signIn: (input: LoginInput) => Promise<void>;
   signUp: (input: SignupInput) => Promise<void>;
   recover: (input: RecoverInput) => Promise<string>;
@@ -50,6 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       status,
       user,
+      token,
       signIn: async (input) => start(await api<AuthResponse>("/api/mobile/auth/login", { method: "POST", body: input })),
       signUp: async (input) => start(await api<AuthResponse>("/api/mobile/auth/register", { method: "POST", body: input })),
       recover: async (input) =>

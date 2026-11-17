@@ -33,7 +33,7 @@ export function TopNavView({ account, pathname }: { account: ReactNode; pathname
                     href={item.href}
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "relative flex h-full items-center gap-2 px-4 font-display text-lg font-semibold tracking-wide transition-colors",
+                      "relative flex h-full items-center gap-2 px-3 font-display text-lg font-semibold tracking-wide transition-colors",
                       active ? "text-estadio" : "text-suave hover:text-estadio",
                     )}
                   >
@@ -47,7 +47,7 @@ export function TopNavView({ account, pathname }: { account: ReactNode; pathname
           </ul>
         </nav>
 
-        <form action="/app/mapa" role="search" className="ml-auto hidden w-full max-w-64 xl:block">
+        <form action="/app/mapa" role="search" className="ml-auto hidden w-full max-w-64 2xl:block">
           <label className="flex h-11 items-center gap-2 rounded-xl border border-linha bg-white px-3 focus-within:border-estadio">
             <KitIcon name="search" size={18} />
             <span className="sr-only">Buscar país, cidade ou estádio</span>
@@ -61,9 +61,9 @@ export function TopNavView({ account, pathname }: { account: ReactNode; pathname
         </form>
 
         <ButtonLink
-          href="/app/passaporte"
+          href="/app/registrar"
           aria-label="Adicionar carimbo"
-          className="ml-auto min-h-11 shrink-0 px-3 text-lg xl:ml-0 xl:px-4"
+          className="ml-auto min-h-11 shrink-0 px-3 text-lg 2xl:ml-0 xl:px-4"
           icon={<KitIcon name="camera-ai" size={24} />}
         >
           <span className="hidden xl:inline">Adicionar carimbo</span>

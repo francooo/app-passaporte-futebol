@@ -50,6 +50,8 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="estadios" />
           <Stack.Screen name="estadio/[id]" />
+          <Stack.Screen name="registrar" />
+          <Stack.Screen name="carimbo/[id]" />
         </Stack.Protected>
         <Stack.Protected guard={status === "signedOut"}>
           <Stack.Screen name="(auth)" />

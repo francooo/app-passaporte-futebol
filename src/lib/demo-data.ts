@@ -1,8 +1,7 @@
 import type { VisitKind } from "@/components/ui/stamp-card";
 
 /**
- * Dados fictícios só para validar o design system (Fase 0).
- * Serão substituídos por consultas ao Neon nas Fases 3–4.
+ * Carimbos ilustrativos da landing page pública (o app usa os registros reais).
  * Créditos das fotos: docs/photo-credits.md (CC BY-SA).
  */
 export const demoVisits: Array<{
@@ -46,10 +45,3 @@ export const demoVisits: Array<{
     tone: "verde",
   },
 ];
-
-export const demoNearby = [
-  { id: "pacaembu", name: "Estádio do Pacaembu", distanceKm: 2.4, photoUrl: null },
-  { id: "allianz", name: "Allianz Parque", distanceKm: 4.1, photoUrl: "/photos/allianz-parque-foto-real.jpg" },
-  { id: "neo-quimica", name: "Neo Química Arena", distanceKm: 18.9, photoUrl: null },
-];
-

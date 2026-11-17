@@ -108,7 +108,7 @@ export default function EstadioScreen() {
               </View>
             )}
 
-            <Button icon={<KitIcon name="camera-ai" size={26} />} onPress={() => router.navigate("/passaporte")}>
+            <Button icon={<KitIcon name="camera-ai" size={26} />} onPress={() => router.push({ pathname: "/registrar", params: { estadio: s.id } })}>
               Registrar visita
             </Button>
             {s.lat != null && s.lng != null && (

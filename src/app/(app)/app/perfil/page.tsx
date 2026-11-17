@@ -4,13 +4,14 @@ import { Suspense } from "react";
 import { signOutAction } from "@/app/(auth)/actions";
 import { Button } from "@/components/ui/button";
 import { KitIcon, type KitIconName } from "@/components/ui/kit-icon";
+import { ProfileSettings } from "@/components/visits/profile-settings";
 import { getCurrentUser } from "@/lib/dal";
+import { getProfile } from "@/lib/visits";
 
 export const metadata: Metadata = { title: "Perfil" };
 
 const sections: Array<{ title: string; description: string; icon: KitIconName }> = [
   { title: "Dados pessoais", description: "Nome, foto, bio, nacionalidade e estado.", icon: "profile" },
-  { title: "Time do coração", description: "Escolha seu clube ou seleção.", icon: "crest-stamp" },
   { title: "Idioma", description: "Português, Español ou English.", icon: "map" },
   { title: "Privacidade", description: "Defina quem pode ver suas visitas.", icon: "lock" },
 ];
@@ -33,8 +34,12 @@ export default function PerfilPage() {
         </div>
 
         <section aria-labelledby="config" className="flex flex-col gap-4 lg:col-span-8">
+          <h2 className="titulo-display text-2xl text-estadio lg:text-3xl">Cidade e time</h2>
+          <Suspense fallback={<div className="h-64 animate-pulse rounded-2xl bg-white/60" />}>
+            <Settings />
+          </Suspense>
           <h2 id="config" className="titulo-display text-2xl text-estadio lg:text-3xl">
-            Configurações
+            Outras configurações
           </h2>
           <ul className="grid gap-4 md:grid-cols-2">
             {sections.map((s) => (
@@ -81,4 +86,10 @@ async function ProfileCard() {
       </div>
     </div>
   );
+}
+
+async function Settings() {
+  const user = await getCurrentUser();
+  const profile = await getProfile(user.id);
+  return <ProfileSettings profile={{ homeCity: profile?.homeCity ?? null, favoriteTeam: profile?.favoriteTeam ?? null }} />;
 }

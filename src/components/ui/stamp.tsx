@@ -17,6 +17,9 @@ export function Stamp({ name, place, photoUrl, tone = "verde", size = 112, class
   const color = tones[tone];
   // Id estável e único por variante (o mesmo carimbo pode aparecer em linha e em tile).
   const uid = `stamp-${name}-${place}-${size}`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  // Nomes longos ("Estádio Jornalista Mário Filho") diminuem a fonte para caber no arco
+  const top = fit(name, 17, 10);
+  const bottom = fit(place, 22, 9);
 
   return (
     <svg
@@ -53,12 +56,12 @@ export function Stamp({ name, place, photoUrl, tone = "verde", size = 112, class
           <path d="M46 70h28M50 70v8m10-8v8m10-8v8" stroke={color} strokeWidth="1.6" />
         </g>
       )}
-      <text fill={color} fontSize="10" fontWeight="700" letterSpacing="1" fontFamily="var(--font-oswald)">
+      <text fill={color} fontSize={top.size} fontWeight="700" letterSpacing={top.spacing} fontFamily="var(--font-oswald)">
         <textPath href={`#${uid}-top`} startOffset="50%" textAnchor="middle">
           {name.toUpperCase()}
         </textPath>
       </text>
-      <text fill={color} fontSize="9" fontWeight="700" letterSpacing="1" fontFamily="var(--font-oswald)">
+      <text fill={color} fontSize={bottom.size} fontWeight="700" letterSpacing={bottom.spacing} fontFamily="var(--font-oswald)">
         <textPath href={`#${uid}-bottom`} startOffset="50%" textAnchor="middle">
           {place.toUpperCase()}
         </textPath>
@@ -67,4 +70,10 @@ export function Stamp({ name, place, photoUrl, tone = "verde", size = 112, class
       <text x="105" y="63" fill={color} fontSize="8" textAnchor="middle">★</text>
     </svg>
   );
+}
+
+/** Tamanho de fonte para o texto caber no arco: até `chars` letras no tamanho base; acima disso, reduz. */
+function fit(text: string, chars: number, base: number) {
+  if (text.length <= chars) return { size: base, spacing: 1 };
+  return { size: Math.max(5.5, (base * chars) / text.length), spacing: 0.4 };
 }

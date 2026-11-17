@@ -3,6 +3,7 @@ import { and, eq, gt, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import type { ApiError } from "@shared/api-types";
 import type { FieldErrors } from "@shared/schemas";
+import { auth } from "@/auth";
 import { db } from "@/db";
 import { apiTokens, users } from "@/db/schema";
 import { hashToken, newToken } from "@/lib/auth-core";
@@ -43,6 +44,21 @@ export async function requireApiUser(request: Request) {
   await db.update(apiTokens).set({ lastUsedAt: new Date() }).where(eq(apiTokens.tokenHash, tokenHash));
   return row.user;
 }
+
+/**
+ * Usuário da requisição, venha do app (Bearer) ou do web (cookie de sessão do Auth.js).
+ * Permite que as mesmas rotas /api/* atendam as duas plataformas.
+ */
+export async function requireUser(request: Request) {
+  if (bearer(request)) return requireApiUser(request);
+  const session = await auth();
+  const id = session?.user?.id;
+  if (!id) return null;
+  const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return user ?? null;
+}
+
+export type RequestUser = NonNullable<Awaited<ReturnType<typeof requireUser>>>;
 
 export async function revokeApiToken(request: Request) {
   const token = bearer(request);

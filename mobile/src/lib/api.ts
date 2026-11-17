@@ -12,21 +12,30 @@ export class ApiRequestError extends Error {
   }
 }
 
-type Options = { method?: "GET" | "POST"; body?: unknown; token?: string | null };
+type Options = {
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  /** Objeto (vai como JSON) ou FormData (upload de foto). */
+  body?: unknown;
+  token?: string | null;
+  signal?: AbortSignal;
+};
 
-export async function api<T>(path: string, { method = "GET", body, token }: Options = {}): Promise<T> {
+export async function api<T>(path: string, { method = "GET", body, token, signal }: Options = {}): Promise<T> {
+  const isForm = typeof FormData !== "undefined" && body instanceof FormData;
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, {
       method,
+      signal,
       headers: {
         Accept: "application/json",
-        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...(body !== undefined && !isForm ? { "Content-Type": "application/json" } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
     });
-  } catch {
+  } catch (error) {
+    if (signal?.aborted) throw error;
     throw new ApiRequestError(0, { error: "server", message: "Sem conexão com o servidor. Verifique sua internet." });
   }
 

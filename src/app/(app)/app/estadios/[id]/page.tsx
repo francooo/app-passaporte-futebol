@@ -108,7 +108,7 @@ async function EstadioContent({ params }: Pick<PageProps<"/app/estadios/[id]">, 
           </dl>
 
           <div className="flex flex-col gap-3 sm:flex-row">
-            <ButtonLink href="/app/passaporte" className="flex-1" icon={<KitIcon name="camera-ai" size={26} />}>
+            <ButtonLink href={`/app/registrar?estadio=${s.id}`} className="flex-1" icon={<KitIcon name="camera-ai" size={26} />}>
               Registrar visita
             </ButtonLink>
             {mapsUrl && (

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Image, Linking, StyleSheet, Text, View } from "react-native";
 import { Button } from "@/components/button";
 import { KitIcon, type KitIconName } from "@/components/kit-icon";
+import { ProfileSettings } from "@/components/profile-settings";
 import { Screen } from "@/components/screen";
 import { API_URL } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -10,7 +11,6 @@ import { colors, font, radius, type } from "@/theme";
 
 const sections: Array<{ title: string; description: string; icon: KitIconName }> = [
   { title: "Dados pessoais", description: "Nome, foto, bio, nacionalidade e estado.", icon: "profile" },
-  { title: "Time do coração", description: "Escolha seu clube ou seleção.", icon: "crest-stamp" },
   { title: "Idioma", description: "Português, Español ou English.", icon: "map" },
   { title: "Privacidade", description: "Defina quem pode ver suas visitas.", icon: "lock" },
 ];
@@ -41,7 +41,12 @@ export default function PerfilScreen() {
       </View>
 
       <Text style={[type.titulo, styles.subtitle]} accessibilityRole="header">
-        Configurações
+        Cidade e time
+      </Text>
+      <ProfileSettings />
+
+      <Text style={[type.titulo, styles.subtitle]} accessibilityRole="header">
+        Outras configurações
       </Text>
       <View style={styles.list}>
         {sections.map((s) => (
