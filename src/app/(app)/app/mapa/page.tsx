@@ -5,7 +5,7 @@ import { CountrySelect } from "@/components/catalog/country-select";
 import { StadiumRow } from "@/components/catalog/stadium-bits";
 import { WorldMap } from "@/components/catalog/world-map";
 import { KitIcon } from "@/components/ui/kit-icon";
-import { listCountries, listStadiums } from "@/lib/catalog/queries";
+import { listCountries, listStadiums, searchStadiums } from "@/lib/catalog/queries";
 
 export const metadata: Metadata = { title: "Mapa dos estádios" };
 
@@ -29,15 +29,47 @@ export default function MapaPage({ searchParams }: PageProps<"/app/mapa">) {
 }
 
 async function MapaContent({ searchParams }: Pick<PageProps<"/app/mapa">, "searchParams">) {
-  const { pais } = await searchParams;
+  const { pais, q: rawQ } = await searchParams;
+  const q = typeof rawQ === "string" ? rawQ.trim().slice(0, 80) : "";
   const countries = await listCountries();
   const available = new Map(countries.map((c) => [c.iso3, c.name]));
-  const requested = typeof pais === "string" ? pais.toUpperCase() : DEFAULT_COUNTRY;
+  // Busca da barra superior: um nome de país seleciona o país; o texto também procura estádios e cidades
+  const byName = q ? countries.find((c) => fold(c.name) === fold(q)) : undefined;
+  const requested = typeof pais === "string" ? pais.toUpperCase() : (byName?.iso3 ?? DEFAULT_COUNTRY);
   const selected = available.has(requested) ? requested : DEFAULT_COUNTRY;
   const country = countries.find((c) => c.iso3 === selected);
-  const top = await listStadiums({ country: selected, pageSize: TOP });
+  const [top, found] = await Promise.all([
+    listStadiums({ country: selected, pageSize: TOP }),
+    q.length >= 2 && !byName ? searchStadiums(q, 12) : Promise.resolve(null),
+  ]);
 
   return (
+    <div className="flex flex-col gap-5 lg:gap-8">
+      {found && (
+        <section aria-labelledby="busca" className="flex flex-col gap-3">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 id="busca" className="titulo-display text-2xl text-estadio lg:text-3xl">
+              Resultados para “{q}”
+            </h2>
+            <Link href="/app/mapa" className="shrink-0 text-sm font-semibold text-estadio underline underline-offset-4">
+              Limpar busca
+            </Link>
+          </div>
+          {found.length ? (
+            <ol className="grid gap-3 lg:grid-cols-2">
+              {found.map((s) => (
+                <li key={s.id}>
+                  <StadiumRow stadium={s} />
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="rounded-xl border border-dashed border-linha p-4 text-suave">
+              Nenhum estádio ou cidade encontrado. Tente outro nome ou escolha um país no mapa.
+            </p>
+          )}
+        </section>
+      )}
     <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:gap-8">
       <section className="rounded-2xl border-4 border-ingresso bg-white p-3 lg:col-span-8 lg:flex lg:flex-col lg:p-6">
         <p className="rotulo-display mb-2 text-xs text-suave lg:text-sm">Mapa-múndi · toque num país</p>
@@ -82,7 +114,13 @@ async function MapaContent({ searchParams }: Pick<PageProps<"/app/mapa">, "searc
         </Link>
       </aside>
     </div>
+    </div>
   );
+}
+
+/** Compara nomes sem acentos e sem diferenciar maiúsculas. */
+function fold(text: string) {
+  return text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
 }
 
 function MapaSkeleton() {

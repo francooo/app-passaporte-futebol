@@ -5,23 +5,29 @@ export type KitIconName =
   | "arrow-right"
   | "back"
   | "bandeira-argentina"
+  | "calendar"
   | "camera-ai"
   | "crest-stamp"
   | "email"
   | "eye"
   | "football"
   | "football-postmark"
+  | "globe"
   | "home"
   | "location-pin"
   | "lock"
   | "map"
   | "menu"
   | "passport"
+  | "plane"
   | "profile"
   | "search"
   | "stadium"
   | "stamp-partida"
-  | "stamp-visita";
+  | "stamp-visita"
+  | "stats"
+  | "trash"
+  | "trophy";
 
 type Props = {
   name: KitIconName;

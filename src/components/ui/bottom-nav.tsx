@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 import { KitIcon } from "./kit-icon";
 import { isActive, navItems } from "./nav-items";
 
-/** Barra persistente Home → Mapa → Passaporte → Perfil (mobile e tablet). */
+/** Barra persistente Home → Mapa → Passaporte → Estatísticas → Perfil (mobile e tablet). */
 export function BottomNav() {
   return <BottomNavView pathname={usePathname()} />;
 }
@@ -18,7 +18,7 @@ export function BottomNavView({ pathname }: { pathname: string | null }) {
       aria-label="Navegação principal"
       className="fixed inset-x-0 bottom-0 z-40 border-t-2 border-[#E5DFAF] bg-[#FFFEF8] pb-[env(safe-area-inset-bottom)] shadow-[0_-3px_9px_#123A3210] lg:hidden"
     >
-      <ul className="mx-auto grid max-w-xl grid-cols-4">
+      <ul className="mx-auto grid max-w-xl grid-cols-5">
         {navItems.map((item) => {
           const active = pathname != null && isActive(pathname, item.href);
           return (
@@ -27,7 +27,7 @@ export function BottomNavView({ pathname }: { pathname: string | null }) {
                 href={item.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "relative flex min-h-16 flex-col items-center justify-center gap-1 text-xs font-bold",
+                  "relative flex min-h-16 flex-col items-center justify-center gap-1 text-[0.7rem] font-bold sm:text-xs",
                   active ? "text-estadio" : "text-suave",
                 )}
               >
