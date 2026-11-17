@@ -15,7 +15,7 @@ export type AuthResponse = { token: string; user: ApiUser };
 export type MessageResponse = { message: string };
 
 export type ApiError = {
-  error: "validation" | "unauthorized" | "conflict" | "rate_limited" | "server";
+  error: "validation" | "unauthorized" | "not_found" | "too_large" | "conflict" | "rate_limited" | "server";
   message: string;
   fields?: FieldErrors;
 };
@@ -61,3 +61,79 @@ export type StadiumDetail = StadiumSummary & {
   photo: PhotoCredit | null;
   wikidataUrl: string | null;
 };
+
+// ── Registros, partidas e estatísticas ───────────────────────────────────────
+
+export type TeamRef = { id: string | null; name: string; crestUrl: string | null };
+
+export type VisitPhoto = { id: string; thumbUrl: string; url: string };
+
+export type VisitSummary = {
+  id: string;
+  kind: "visit" | "match";
+  /** "AAAA-MM-DD" ou null (registro sem data). */
+  date: string | null;
+  stadium: { id: string; name: string; city: string | null; state: string | null; country: string; thumbUrl: string | null };
+  home: TeamRef | null;
+  away: TeamRef | null;
+  homeScore: number | null;
+  awayScore: number | null;
+  competition: string | null;
+  /** Primeira foto do registro (miniatura) ou null. */
+  coverUrl: string | null;
+};
+
+export type VisitDetail = VisitSummary & {
+  note: string | null;
+  matchId: string | null;
+  photos: VisitPhoto[];
+};
+
+export type VisitList = {
+  items: VisitSummary[];
+  /** Totais de todo o histórico (independem dos filtros). */
+  totals: { stamps: number; stadiums: number };
+  /** Anos e competições com registros, para montar os filtros. */
+  years: number[];
+  competitions: string[];
+};
+
+export type MatchResult = {
+  id: string;
+  competition: { code: string; name: string };
+  /** ISO (UTC). */
+  utcDate: string;
+  home: TeamRef;
+  away: TeamRef;
+  homeScore: number | null;
+  awayScore: number | null;
+  stadiumId: string | null;
+};
+
+export type CompetitionOption = { code: string; name: string; emblemUrl: string | null };
+
+export type NearbyStadium = StadiumSummary & { distanceKm: number };
+
+export type FanStats = {
+  countries: number;
+  stadiums: number;
+  matches: number;
+  visits: number;
+  /** null quando o usuário ainda não informou a cidade onde mora. */
+  km: number | null;
+  homeCity: string | null;
+  byYear: Array<{ year: number; count: number }>;
+  team: {
+    team: TeamRef;
+    wins: number;
+    draws: number;
+    losses: number;
+    /** % de vitórias (0–100) entre as partidas com placar em que o time jogou. */
+    winRate: number | null;
+  } | null;
+  /** Times que aparecem nas partidas registradas (seletor "Desempenho do seu time"). */
+  teamsSeen: TeamRef[];
+  biggestStadiums: Array<{ id: string; name: string; city: string | null; capacity: number; thumbUrl: string | null }>;
+};
+
+export type MeProfile = ApiUser & { homeCity: string | null; favoriteTeam: TeamRef | null };

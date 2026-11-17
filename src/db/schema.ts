@@ -1,6 +1,6 @@
 import {
   boolean,
-  check,
+  customType,
   date,
   doublePrecision,
   index,
@@ -13,7 +13,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { AdapterAccountType } from "next-auth/adapters";
 
 const id = () =>
@@ -21,6 +21,11 @@ const id = () =>
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID());
 const createdAt = () => timestamp("created_at", { mode: "date" }).notNull().defaultNow();
+
+/** Binário (fotos dos registros guardadas no Neon). */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => "bytea",
+});
 
 export const roleEnum = pgEnum("role", ["user", "moderator", "admin"]);
 export const statusEnum = pgEnum("catalog_status", ["approved", "pending", "rejected"]);
@@ -38,7 +43,11 @@ export const users = pgTable("users", {
   // Campos do Passaporte
   passwordHash: text("password_hash"),
   bio: text("bio"),
-  favoriteTeamId: text("favorite_team_id"),
+  favoriteTeamId: text("favorite_team_id").references((): AnyPgColumn => teams.id, { onDelete: "set null" }),
+  /** Cidade onde mora: base do cálculo de km viajados (ida e volta até cada estádio). */
+  homeCity: text("home_city"),
+  homeLat: doublePrecision("home_lat"),
+  homeLng: doublePrecision("home_lng"),
   nationality: text("nationality"),
   state: text("state"),
   language: text("language").notNull().default("pt"),
@@ -181,13 +190,59 @@ export const teams = pgTable(
     name: text("name").notNull(),
     country: text("country").notNull(),
     kind: teamKindEnum("kind").notNull().default("club"),
+    shortName: text("short_name"),
     crestUrl: text("crest_url"),
+    /** Nome do estádio informado pelo provedor (liga partidas ao catálogo). */
+    venueName: text("venue_name"),
+    /** Origem: "football-data" (importado) ou null (criado por usuário no preenchimento manual). */
+    provider: text("provider"),
+    providerId: text("provider_id"),
     specialBadge: text("special_badge"),
     status: statusEnum("status").notNull().default("pending"),
     createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
-  (t) => [index("teams_name_idx").on(t.name)],
+  (t) => [index("teams_name_idx").on(t.name), uniqueIndex("teams_provider_idx").on(t.provider, t.providerId)],
+);
+
+/** Competições importadas do football-data.org (código: BSA, PL, CL…). */
+export const competitions = pgTable("competitions", {
+  code: text("code").primaryKey(),
+  name: text("name").notNull(),
+  country: text("country"),
+  emblemUrl: text("emblem_url"),
+  lastSyncedAt: timestamp("last_synced_at", { mode: "date" }),
+  syncError: text("sync_error"),
+});
+
+/** Partidas importadas (só leitura): base da tela "Encontre a partida". */
+export const matches = pgTable(
+  "matches",
+  {
+    id: id(),
+    provider: text("provider").notNull().default("football-data"),
+    providerId: text("provider_id").notNull(),
+    competitionCode: text("competition_code")
+      .notNull()
+      .references(() => competitions.code, { onDelete: "cascade" }),
+    utcDate: timestamp("utc_date", { mode: "date" }).notNull(),
+    status: text("status").notNull(),
+    homeTeamId: text("home_team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    awayTeamId: text("away_team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    homeScore: integer("home_score"),
+    awayScore: integer("away_score"),
+    /** Estádio do nosso catálogo, quando foi possível ligar pelo nome do estádio ou pelos clubes. */
+    stadiumId: text("stadium_id").references(() => stadiums.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    uniqueIndex("matches_provider_idx").on(t.provider, t.providerId),
+    index("matches_date_idx").on(t.utcDate),
+    index("matches_stadium_idx").on(t.stadiumId, t.utcDate),
+  ],
 );
 
 // ── Visitas e partidas ───────────────────────────────────────────────────────
@@ -205,17 +260,18 @@ export const visits = pgTable(
     kind: visitKindEnum("kind").notNull(),
     /** Opcional: "pode registrar sem data" */
     date: date("date", { mode: "date" }),
+    /** Partida escolhida em "Encontre a partida" (null = preenchimento manual ou visita). */
+    matchId: text("match_id").references(() => matches.id, { onDelete: "set null" }),
     homeTeamId: text("home_team_id").references(() => teams.id, { onDelete: "set null" }),
     awayTeamId: text("away_team_id").references(() => teams.id, { onDelete: "set null" }),
-    score: text("score"),
+    homeScore: integer("home_score"),
+    awayScore: integer("away_score"),
+    /** Nome da competição (vem da partida ou do preenchimento manual). */
     competition: text("competition"),
     note: text("note"),
     createdAt: createdAt(),
   },
-  (t) => [
-    index("visits_user_idx").on(t.userId, t.createdAt),
-    check("visits_score_format", sql`${t.score} IS NULL OR ${t.score} ~ '^\\d{1,2}-\\d{1,2}$'`),
-  ],
+  (t) => [index("visits_user_idx").on(t.userId, t.date)],
 );
 
 export const visitPhotos = pgTable(
@@ -225,7 +281,11 @@ export const visitPhotos = pgTable(
     visitId: text("visit_id")
       .notNull()
       .references(() => visits.id, { onDelete: "cascade" }),
-    blobUrl: text("blob_url").notNull(),
+    /** WebP ~1600 px e miniatura ~400 px, gerados no servidor (sharp). */
+    data: bytea("data").notNull(),
+    thumb: bytea("thumb").notNull(),
+    mime: text("mime").notNull().default("image/webp"),
+    bytes: integer("bytes").notNull(),
     position: integer("position").notNull().default(0),
     createdAt: createdAt(),
   },

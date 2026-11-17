@@ -1,6 +1,6 @@
 import "server-only";
-import { and, asc, desc, eq, gt, ilike, or, sql } from "drizzle-orm";
-import type { CatalogCountry, StadiumDetail, StadiumPage, StadiumSummary } from "@shared/api-types";
+import { and, asc, desc, eq, gt, or, sql } from "drizzle-orm";
+import type { CatalogCountry, NearbyStadium, StadiumDetail, StadiumPage, StadiumSummary } from "@shared/api-types";
 import { db } from "@/db";
 import { countries, stadiums } from "@/db/schema";
 import { fillAddress } from "./address";
@@ -56,6 +56,13 @@ function toSummary(r: SummaryRow): StadiumSummary {
 
 const visible = and(eq(stadiums.status, "approved"), hasUsefulData);
 
+/** Nome ou cidade, sem diferenciar acentos ("maracana" encontra "Maracanã"). */
+const nameOrCity = (term: string) =>
+  or(
+    sql`unaccent(${stadiums.name}) ilike unaccent(${`%${term}%`})`,
+    sql`unaccent(${stadiums.city}) ilike unaccent(${`%${term}%`})`,
+  );
+
 export async function listCountries(): Promise<CatalogCountry[]> {
   const rows = await db
     .select({ iso3: countries.iso3, iso2: countries.iso2, name: countries.namePt, stadiumCount: countries.stadiumCount })
@@ -90,7 +97,7 @@ export async function listStadiums({
   const where = and(
     visible,
     eq(stadiums.country, country),
-    term ? or(ilike(stadiums.name, `%${term}%`), ilike(stadiums.city, `%${term}%`)) : undefined,
+    term ? nameOrCity(term) : undefined,
   );
 
   const [rows, [{ total }]] = await Promise.all([
@@ -169,4 +176,45 @@ export async function listPhotoCredits({ page = 0, pageSize = 100 } = {}) {
     .orderBy(asc(stadiums.country), desc(capacityExpr))
     .limit(pageSize)
     .offset(page * pageSize);
+}
+
+/** Busca global (todos os países) para escolher o estádio do registro. */
+export async function searchStadiums(q: string, limit = 20): Promise<StadiumSummary[]> {
+  const term = q.trim();
+  if (term.length < 2) return [];
+  const rows = await db
+    .select(summaryColumns)
+    .from(stadiums)
+    .where(and(visible, nameOrCity(term)))
+    .orderBy(sql`${capacityExpr} desc nulls last`, asc(stadiums.name))
+    .limit(limit);
+  return rows.map(toSummary);
+}
+
+/**
+ * Estádios num raio (km) a partir de uma coordenada, do mais perto para o mais longe.
+ * A coordenada do usuário só é usada nesta consulta (não é gravada).
+ */
+export async function nearbyStadiums(lat: number, lng: number, radiusKm = 100, limit = 20): Promise<NearbyStadium[]> {
+  const dLat = radiusKm / 111;
+  const dLng = radiusKm / (111 * Math.max(Math.cos((lat * Math.PI) / 180), 0.01));
+  const distance = sql<number>`6371 * 2 * asin(sqrt(
+    power(sin(radians(${stadiums.lat} - ${lat}) / 2), 2) +
+    cos(radians(${lat})) * cos(radians(${stadiums.lat})) * power(sin(radians(${stadiums.lng} - ${lng}) / 2), 2)
+  ))`;
+  const rows = await db
+    .select({ ...summaryColumns, distanceKm: distance })
+    .from(stadiums)
+    .where(
+      and(
+        visible,
+        // Caixa delimitadora antes do cálculo exato (usa só faixas de lat/lng)
+        sql`${stadiums.lat} between ${lat - dLat} and ${lat + dLat}`,
+        sql`${stadiums.lng} between ${lng - dLng} and ${lng + dLng}`,
+        sql`${distance} <= ${radiusKm}`,
+      ),
+    )
+    .orderBy(distance)
+    .limit(limit);
+  return rows.map((r) => ({ ...toSummary(r), distanceKm: Math.round(Number(r.distanceKm) * 10) / 10 }));
 }

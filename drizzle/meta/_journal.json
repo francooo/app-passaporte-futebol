@@ -22,6 +22,27 @@
       "when": 1793629418723,
       "tag": "0002_catalogo_estadios",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794882132912,
+      "tag": "0003_v06_remove_colunas_antigas",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794882157334,
+      "tag": "0004_v06_registros_e_fotos",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794882787505,
+      "tag": "0005_busca_sem_acentos",
+      "breakpoints": true
     }
   ]
 }

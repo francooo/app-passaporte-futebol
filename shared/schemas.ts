@@ -44,3 +44,70 @@ export type FieldErrors = Record<string, string[] | undefined>;
 export function fieldErrors(error: z.ZodError): FieldErrors {
   return z.flattenError(error).fieldErrors as FieldErrors;
 }
+
+// ── Registros (visitas e partidas) ───────────────────────────────────────────
+
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .transform((v) => v || null)
+    .nullish();
+
+const score = z.coerce
+  .number({ message: "Informe o placar." })
+  .int("Placar inválido.")
+  .min(0, "Placar inválido.")
+  .max(99, "Placar inválido.");
+
+/**
+ * Registro de visita ou partida. Partida: vem de "Encontre a partida" (matchId)
+ * ou do preenchimento manual (times + placar; competição opcional). Data opcional ("pode registrar sem data").
+ */
+export const visitSchema = z
+  .object({
+    kind: z.enum(["visit", "match"], { message: "Escolha Visita ou Partida." }),
+    stadiumId: z.string().min(1, "Escolha o estádio."),
+    date: z.iso.date({ message: "Data inválida." }).nullish(),
+    matchId: z.string().min(1).nullish(),
+    homeTeamId: z.string().min(1).nullish(),
+    homeTeamName: optionalText(80),
+    awayTeamId: z.string().min(1).nullish(),
+    awayTeamName: optionalText(80),
+    homeScore: score.nullish(),
+    awayScore: score.nullish(),
+    competition: optionalText(80),
+    note: optionalText(1000),
+  })
+  .superRefine((v, ctx) => {
+    if (v.date && v.date > new Date().toISOString().slice(0, 10)) {
+      ctx.addIssue({ code: "custom", path: ["date"], message: "A data não pode estar no futuro." });
+    }
+    if (v.kind !== "match" || v.matchId) return;
+    if (!v.homeTeamId && !v.homeTeamName) ctx.addIssue({ code: "custom", path: ["homeTeamName"], message: "Informe o mandante." });
+    if (!v.awayTeamId && !v.awayTeamName) ctx.addIssue({ code: "custom", path: ["awayTeamName"], message: "Informe o visitante." });
+    if (v.homeScore == null || v.awayScore == null) {
+      ctx.addIssue({ code: "custom", path: ["homeScore"], message: "Informe o placar." });
+    }
+  });
+
+export type VisitInput = z.input<typeof visitSchema>;
+
+/** Perfil: cidade onde mora (base dos km viajados) e time do coração. */
+export const profileSchema = z.object({
+  homeCity: optionalText(120),
+  favoriteTeamId: z.string().min(1).nullish(),
+});
+
+export type ProfileInput = z.input<typeof profileSchema>;
+
+/** Fotos aceitas por registro (o cliente reduz antes de enviar; o servidor converte para WebP). */
+export const PHOTO_LIMITS = {
+  maxPerVisit: 10,
+  /** Limite do arquivo já reduzido pelo cliente (o corpo das funções da Vercel vai até ~4,5 MB). */
+  maxUploadBytes: 4 * 1024 * 1024,
+  /** Lado maior que o cliente deve usar ao reduzir. */
+  clientMaxSide: 2000,
+  types: ["image/jpeg", "image/png", "image/webp"],
+} as const;
