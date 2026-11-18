@@ -46,7 +46,7 @@ async function Carimbo({ params, searchParams }: PageProps<"/app/passaporte/[id]
 
       <div className="flex flex-col gap-6 lg:grid lg:grid-cols-12 lg:items-start lg:gap-8">
         <Ticket className="lg:col-span-5" innerClassName="flex flex-col items-center gap-4 text-center">
-          <Stamp name={v.stadium.name} place={where} photoUrl={v.coverUrl ?? v.stadium.thumbUrl} tone={isMatch ? "azul" : "verde"} size={260} />
+          <Stamp name={v.stadium.name} place={where} photoUrl={v.stadium.thumbUrl} tone={isMatch ? "azul" : "verde"} size={260} />
           <div className="flex w-full flex-col items-center gap-2 border-t border-dashed border-linha pt-4">
             <span className={cn("rotulo-display rounded-md px-2 py-0.5 text-sm text-estadio", isMatch ? "bg-partida" : "bg-visita")}>
               {isMatch ? "Partida" : "Visita"}

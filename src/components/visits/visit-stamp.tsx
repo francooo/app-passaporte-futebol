@@ -11,7 +11,7 @@ export function VisitStamp({ visit: v }: { visit: VisitSummary }) {
     stateCode: v.stadium.state && v.stadium.state !== v.stadium.city ? v.stadium.state : undefined,
     kind: v.kind,
     date: v.date ? new Date(y, m - 1, d) : null,
-    photoUrl: v.coverUrl ?? v.stadium.thumbUrl,
+    photoUrl: v.stadium.thumbUrl,
     tone: v.kind === "match" ? ("azul" as const) : ("verde" as const),
   };
   return (

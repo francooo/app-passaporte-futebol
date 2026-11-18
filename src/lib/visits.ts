@@ -64,7 +64,6 @@ const summaryColumns = {
   },
   home: { id: homeTeam.id, name: homeTeam.name, shortName: homeTeam.shortName, crestUrl: homeTeam.crestUrl },
   away: { id: awayTeam.id, name: awayTeam.name, shortName: awayTeam.shortName, crestUrl: awayTeam.crestUrl },
-  coverId: sql<string | null>`(select ${visitPhotos.id} from ${visitPhotos} where ${visitPhotos.visitId} = ${visits.id} order by ${visitPhotos.position} limit 1)`,
 };
 
 function baseQuery() {
@@ -96,7 +95,6 @@ function toSummary(r: Row): VisitSummary {
     homeScore: r.homeScore,
     awayScore: r.awayScore,
     competition: r.competition,
-    coverUrl: r.coverId ? photoUrl(r.coverId, true) : null,
   };
 }
 

@@ -79,8 +79,6 @@ export type VisitSummary = {
   homeScore: number | null;
   awayScore: number | null;
   competition: string | null;
-  /** Primeira foto do registro (miniatura) ou null. */
-  coverUrl: string | null;
 };
 
 export type VisitDetail = VisitSummary & {
