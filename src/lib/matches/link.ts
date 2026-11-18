@@ -42,11 +42,21 @@ export function clubTokens(name: string) {
     .filter((w) => w.length >= 4 && !CLUB_WORDS.has(w));
 }
 
+/** Mandantes que não são o time principal (base, reservas, feminino): não servem para ligar o time profissional. */
+const SECONDARY_TEAM = /\b(reserves?|academy|youth|juvenil|women|womens|ladies|feminino|femenino|femminile|frauen|feminines?|w f c|wfc|u ?\d{2}|sub ?\d{2}|b|ii)\b/;
+
+export function isSecondaryTeam(club: string) {
+  return SECONDARY_TEAM.test(normalizeName(club));
+}
+
 export type CatalogStadium = { id: string; name: string; country: string; capacity: number | null; clubs: string[] };
 
 /**
  * Estádio de um time: 1) nome do estádio informado pelo provedor igual (sem acentos/prefixos) ao do catálogo;
- * 2) senão, o maior estádio do país cujos clubes mandantes (Wikidata) contêm o nome do time.
+ * 2) senão, o estádio do país cujo clube mandante (Wikidata) tem mais palavras em comum com o nome do time;
+ *    no empate, o maior. Contar as palavras evita que a cidade no nome decida sozinha
+ *    ("Rayo Vallecano de Madrid" fica em Vallecas, não no Bernabéu do "Real Madrid"). Times de base, reservas
+ *    e femininos não contam (o Academy Stadium não vira a casa do Manchester City).
  */
 export function findTeamStadium(
   team: { name: string; shortName: string | null; venue: string | null; country: string | null },
@@ -62,12 +72,15 @@ export function findTeamStadium(
 
   const tokens = [...new Set([...clubTokens(team.shortName ?? ""), ...clubTokens(team.name)])];
   if (tokens.length === 0) return null;
-  const candidates = pool.filter((s) =>
-    s.clubs.some((club) => {
-      const words = new Set(normalizeName(club).split(" "));
-      return tokens.some((t) => words.has(t));
-    }),
-  );
-  candidates.sort((a, b) => (b.capacity ?? 0) - (a.capacity ?? 0));
-  return candidates[0]?.id ?? null;
+  const score = (s: CatalogStadium) =>
+    Math.max(
+      0,
+      ...s.clubs.filter((club) => !isSecondaryTeam(club)).map((club) => {
+        const words = new Set(normalizeName(club).split(" "));
+        return tokens.filter((t) => words.has(t)).length;
+      }),
+    );
+  const candidates = pool.map((s) => ({ s, score: score(s) })).filter((c) => c.score > 0);
+  candidates.sort((a, b) => b.score - a.score || (b.s.capacity ?? 0) - (a.s.capacity ?? 0));
+  return candidates[0]?.s.id ?? null;
 }

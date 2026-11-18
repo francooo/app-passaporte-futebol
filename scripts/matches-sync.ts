@@ -2,7 +2,7 @@
  * Carga de partidas do football-data.org (plano gratuito: 10 requisições/min — leva alguns minutos).
  *   npm run matches:sync              (todas as competições do plano gratuito)
  *   npm run matches:sync -- BSA CL    (competições específicas)
- *   npm run matches:sync -- --proximos [BSA …]   (só os jogos agendados dos próximos 14 dias)
+ *   npm run matches:sync -- --proximos [BSA …]   (só os jogos agendados dos próximos 30 dias)
  */
 import { FREE_COMPETITIONS } from "@/lib/matches/football-data";
 import { syncCompetition, syncUpcoming } from "@/lib/matches/sync";

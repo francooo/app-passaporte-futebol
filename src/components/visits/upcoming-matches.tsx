@@ -1,20 +1,35 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import type { UpcomingMatch } from "@shared/api-types";
 import { KitIcon } from "@/components/ui/kit-icon";
 import { TeamCrest } from "./team-crest";
 
+const options: Intl.DateTimeFormatOptions = { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" };
 // Fuso do aparelho do usuário (sem timeZone fixo)
-const when = new Intl.DateTimeFormat("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+const when = new Intl.DateTimeFormat("pt-BR", options);
+// Render no servidor (mapa): horário de Brasília até a hidratação trocar pelo fuso do aparelho
+const whenServer = new Intl.DateTimeFormat("pt-BR", { ...options, timeZone: "America/Sao_Paulo" });
 
 /** "sáb, 22/11, 16:00" */
-export function formatKickoff(utcDate: string) {
+export function formatKickoff(utcDate: string, format = when) {
   // O Intl separa a hora com espaço estreito (U+202F); vira espaço comum
-  return when.format(new Date(utcDate)).replace(/\./g, "").replace(/\s/g, " ");
+  return format.format(new Date(utcDate)).replace(/\./g, "").replace(/\s/g, " ");
 }
 
-/** Próximos jogos (14 dias) de um estádio na lista do registro: o primeiro sempre visível, os demais ao expandir. */
+const noSubscribe = () => () => {};
+
+/** Data/hora do jogo: igual no servidor e na hidratação; em seguida no fuso do aparelho. */
+function Kickoff({ utcDate }: { utcDate: string }) {
+  const text = useSyncExternalStore(
+    noSubscribe,
+    () => formatKickoff(utcDate),
+    () => formatKickoff(utcDate, whenServer),
+  );
+  return <time dateTime={utcDate}>{text}</time>;
+}
+
+/** Próximos jogos de um estádio (lista do registro, busca e ranking do mapa): o primeiro sempre visível, os demais ao expandir. */
 export function UpcomingMatches({ matches }: { matches: UpcomingMatch[] }) {
   const [open, setOpen] = useState(false);
   if (!matches.length) return null;
@@ -37,7 +52,7 @@ export function UpcomingMatches({ matches }: { matches: UpcomingMatch[] }) {
               <span className="truncate">{m.away.name}</span>
             </span>
             <span className="text-xs text-suave">
-              {formatKickoff(m.utcDate)} · {m.competition.name}
+              <Kickoff utcDate={m.utcDate} /> · {m.competition.name}
             </span>
           </li>
         ))}

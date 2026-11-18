@@ -105,6 +105,11 @@ async function MapaContent({ searchParams }: Pick<PageProps<"/app/mapa">, "searc
             Ainda não há estádios deste país no catálogo.
           </p>
         )}
+        {top.items.some((s) => s.upcoming?.length) && (
+          <p className="-mt-1 text-xs text-suave">
+            Próximo jogo das principais ligas (football-data.org) nos próximos 30 dias, no estádio do mandante.
+          </p>
+        )}
 
         <Link
           href={`/app/estadios?pais=${selected}`}

@@ -388,6 +388,9 @@ function StepStadium({
                   {nearby && results.length > 0 && (
                     <p className="text-xs text-suave">Jogos das principais ligas (football-data.org) nos próximos 14 dias, no estádio do mandante.</p>
                   )}
+                  {!nearby && results.some((s) => s.upcoming?.length) && (
+                    <p className="text-xs text-suave">Próximo jogo das principais ligas (football-data.org) nos próximos 30 dias, no estádio do mandante.</p>
+                  )}
                 </>
               )}
             </div>

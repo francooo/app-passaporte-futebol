@@ -7,6 +7,7 @@ import { fillAddress } from "./address";
 import { commonsThumb } from "./rules";
 import { hasUsefulData } from "./filters";
 import { upcomingByStadium } from "@/lib/matches/queries";
+import { NEXT_MATCH_DAYS } from "@/lib/matches/upcoming";
 
 /**
  * Consultas do catálogo usadas pelos Server Components do web e pela API (src/app/api/catalog/*).
@@ -53,6 +54,12 @@ function toSummary(r: SummaryRow): StadiumSummary {
     capacityNeedsReview: r.capacityNeedsReview && r.capacityOverride == null,
     thumbUrl: commonsThumb(r.photoUrl, 330),
   };
+}
+
+/** Próximo jogo (30 dias) de cada estádio da lista: ranking do país no mapa e busca do registro. */
+async function withNextMatch(items: StadiumSummary[]): Promise<StadiumSummary[]> {
+  const upcoming = await upcomingByStadium(items.map((s) => s.id), { days: NEXT_MATCH_DAYS, perStadium: 1 });
+  return items.map((s) => ({ ...s, upcoming: upcoming.get(s.id) ?? [] }));
 }
 
 const visible = and(eq(stadiums.status, "approved"), hasUsefulData);
@@ -113,7 +120,7 @@ export async function listStadiums({
   ]);
 
   return {
-    items: rows.slice(0, pageSize).map(toSummary),
+    items: await withNextMatch(rows.slice(0, pageSize).map(toSummary)),
     nextPage: rows.length > pageSize ? page + 1 : null,
     total,
   };
@@ -189,7 +196,7 @@ export async function searchStadiums(q: string, limit = 20): Promise<StadiumSumm
     .where(and(visible, nameOrCity(term)))
     .orderBy(sql`${capacityExpr} desc nulls last`, asc(stadiums.name))
     .limit(limit);
-  return rows.map(toSummary);
+  return withNextMatch(rows.map(toSummary));
 }
 
 /**

@@ -4,6 +4,7 @@ import type { PhotoCredit, StadiumSummary } from "@shared/api-types";
 import { remoteImage } from "@/lib/remote-image";
 import { colors, font, radius, type } from "@/theme";
 import { KitIcon } from "./kit-icon";
+import { UpcomingMatches } from "./upcoming-matches";
 
 const number = new Intl.NumberFormat("pt-BR");
 
@@ -36,28 +37,33 @@ export function StadiumThumb({ url, size = 48 }: { url: string | null; size?: nu
 /** Linha do ranking/lista: posição, foto, nome, local e capacidade. */
 export function StadiumRow({ stadium, position }: { stadium: StadiumSummary; position?: number }) {
   const capacity = stadium.capacity != null ? `${number.format(stadium.capacity)} lugares` : "capacidade não informada";
+  const next = stadium.upcoming?.[0];
   return (
     <Pressable
       onPress={() => router.push({ pathname: "/estadio/[id]", params: { id: stadium.id } })}
       accessibilityRole="button"
-      accessibilityLabel={`${position ? `${position}º, ` : ""}${stadium.name}, ${place(stadium)}, ${capacity}`}
-      style={({ pressed }) => [styles.row, pressed && { opacity: 0.85 }]}
+      accessibilityLabel={`${position ? `${position}º, ` : ""}${stadium.name}, ${place(stadium)}, ${capacity}${next ? `, próximo jogo: ${next.home.name} contra ${next.away.name}` : ""}`}
+      style={({ pressed }) => [styles.card, pressed && { opacity: 0.85 }]}
     >
-      {position != null && (
-        <View style={styles.rank}>
-          <Text style={styles.rankText}>{position}º</Text>
+      <View style={styles.row}>
+        {position != null && (
+          <View style={styles.rank}>
+            <Text style={styles.rankText}>{position}º</Text>
+          </View>
+        )}
+        <StadiumThumb url={stadium.thumbUrl} />
+        <View style={styles.info}>
+          <Text style={styles.name} numberOfLines={1}>
+            {stadium.name}
+          </Text>
+          <Text style={type.suave} numberOfLines={1}>
+            {place(stadium)}
+          </Text>
         </View>
-      )}
-      <StadiumThumb url={stadium.thumbUrl} />
-      <View style={styles.info}>
-        <Text style={styles.name} numberOfLines={1}>
-          {stadium.name}
-        </Text>
-        <Text style={type.suave} numberOfLines={1}>
-          {place(stadium)}
-        </Text>
+        <Capacity value={stadium.capacity} needsReview={stadium.capacityNeedsReview} />
       </View>
-      <Capacity value={stadium.capacity} needsReview={stadium.capacityNeedsReview} />
+      {/* Próximo jogo em 30 dias (ranking do país e busca) */}
+      {stadium.upcoming && stadium.upcoming.length > 0 && <UpcomingMatches matches={stadium.upcoming} />}
     </Pressable>
   );
 }
@@ -101,16 +107,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden",
   },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+  card: {
     padding: 12,
     borderRadius: radius.campo,
     borderWidth: 1,
     borderColor: colors.linha,
     backgroundColor: colors.branco,
   },
+  row: { flexDirection: "row", alignItems: "center", gap: 10 },
   rank: { width: 36, height: 36, borderRadius: 8, backgroundColor: colors.estadio, alignItems: "center", justifyContent: "center" },
   rankText: { fontFamily: font.display, fontSize: 16, color: colors.ingresso },
   info: { flex: 1, minWidth: 0 },

@@ -13,7 +13,7 @@ export function formatKickoff(utcDate: string) {
   return when.format(new Date(utcDate)).replace(/\./g, "").replace(/\s/g, " ");
 }
 
-/** Próximos jogos (14 dias) de um estádio na lista do registro (igual ao web): o primeiro visível, os demais ao expandir. */
+/** Próximos jogos de um estádio (registro, busca e ranking do mapa; igual ao web): o primeiro visível, os demais ao expandir. */
 export function UpcomingMatches({ matches }: { matches: UpcomingMatch[] }) {
   const [open, setOpen] = useState(false);
   if (!matches.length) return null;

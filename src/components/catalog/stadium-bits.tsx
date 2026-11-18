@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { PhotoCredit, StadiumSummary } from "@shared/api-types";
 import { KitIcon } from "@/components/ui/kit-icon";
+import { UpcomingMatches } from "@/components/visits/upcoming-matches";
 import { cn } from "@/lib/cn";
 
 const number = new Intl.NumberFormat("pt-BR");
@@ -46,13 +47,14 @@ export function StadiumThumb({ url, className, sizes = "64px" }: { url: string |
   );
 }
 
-/** Linha do ranking/lista: posição, foto, nome, local e capacidade. */
+/** Linha do ranking/lista: posição, foto, nome, local e capacidade; abaixo, o próximo jogo no estádio (se houver). */
 export function StadiumRow({ stadium, position }: { stadium: StadiumSummary; position?: number }) {
   return (
     <Link
       href={`/app/estadios/${stadium.id}`}
-      className="grid grid-cols-[auto_auto_1fr_auto] items-center gap-3 rounded-xl border border-linha bg-white p-3 transition-shadow hover:shadow-md"
+      className="flex flex-col gap-2 rounded-xl border border-linha bg-white p-3 transition-shadow hover:shadow-md"
     >
+      <span className="grid grid-cols-[auto_auto_1fr_auto] items-center gap-3">
       {position != null ? (
         <span className="grid size-10 place-items-center rounded-lg bg-estadio font-display text-lg font-bold text-ingresso">
           {position}º
@@ -66,6 +68,8 @@ export function StadiumRow({ stadium, position }: { stadium: StadiumSummary; pos
         <span className="block truncate text-sm text-suave">{place(stadium)}</span>
       </span>
       <Capacity value={stadium.capacity} needsReview={stadium.capacityNeedsReview} />
+      </span>
+      {stadium.upcoming && stadium.upcoming.length > 0 && <UpcomingMatches matches={stadium.upcoming} />}
     </Link>
   );
 }

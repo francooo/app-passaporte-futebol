@@ -4,7 +4,7 @@ import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { CompetitionOption, MatchResult, TeamRef, UpcomingMatch } from "@shared/api-types";
 import { db } from "@/db";
 import { competitions, matches, teams } from "@/db/schema";
-import { groupByStadium, UPCOMING_DAYS, UPCOMING_STATUSES } from "./upcoming";
+import { groupByStadium, UPCOMING_DAYS, UPCOMING_PER_STADIUM, UPCOMING_STATUSES } from "./upcoming";
 
 const home = alias(teams, "home_team");
 const away = alias(teams, "away_team");
@@ -123,8 +123,14 @@ export async function searchTeams(term: string, userId: string | null, limit = 1
   return rows.map((r) => ({ id: r.id, name: r.shortName ?? r.name, crestUrl: r.crestUrl }));
 }
 
-/** Partidas agendadas nos próximos 14 dias nos estádios informados (até 3 por estádio, por data). */
-export async function upcomingByStadium(stadiumIds: string[], now = new Date()): Promise<Map<string, UpcomingMatch[]>> {
+/**
+ * Partidas agendadas nos estádios informados, por data: por padrão os próximos 14 dias e até 3 por estádio
+ * (estádios perto); o mapa e a busca pedem 30 dias e 1 jogo (ver NEXT_MATCH_DAYS).
+ */
+export async function upcomingByStadium(
+  stadiumIds: string[],
+  { days = UPCOMING_DAYS, perStadium = UPCOMING_PER_STADIUM, now = new Date() } = {},
+): Promise<Map<string, UpcomingMatch[]>> {
   if (!stadiumIds.length) return new Map();
   const rows = await db
     .select({
@@ -144,7 +150,7 @@ export async function upcomingByStadium(stadiumIds: string[], now = new Date()):
         inArray(matches.stadiumId, stadiumIds),
         inArray(matches.status, [...UPCOMING_STATUSES]),
         gte(matches.utcDate, now),
-        lte(matches.utcDate, new Date(now.getTime() + UPCOMING_DAYS * 86_400_000)),
+        lte(matches.utcDate, new Date(now.getTime() + days * 86_400_000)),
       ),
     )
     .orderBy(asc(matches.utcDate));
@@ -154,7 +160,7 @@ export async function upcomingByStadium(stadiumIds: string[], now = new Date()):
     name: t.name ?? t.fullName,
     crestUrl: t.crestUrl,
   });
-  const groups = groupByStadium(rows.map((r) => ({ ...r, utcDate: r.utcDate.toISOString() })));
+  const groups = groupByStadium(rows.map((r) => ({ ...r, utcDate: r.utcDate.toISOString() })), perStadium);
   return new Map(
     [...groups].map(([stadiumId, list]) => [
       stadiumId,

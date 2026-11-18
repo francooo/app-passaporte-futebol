@@ -35,6 +35,11 @@ export type StadiumSummary = {
   capacityNeedsReview: boolean;
   /** Miniatura de 330 px (largura padrão do Wikimedia Commons). */
   thumbUrl: string | null;
+  /**
+   * Partidas agendadas no estádio (estádio do mandante), por data. Busca e lista do país: o próximo jogo
+   * em 30 dias; estádios perto: até 3 em 14 dias. Ausente nas demais rotas.
+   */
+  upcoming?: UpcomingMatch[];
 };
 
 export type StadiumPage = { items: StadiumSummary[]; nextPage: number | null; total: number };
@@ -122,8 +127,6 @@ export type UpcomingMatch = {
 
 export type NearbyStadium = StadiumSummary & {
   distanceKm: number;
-  /** Partidas agendadas nos próximos 14 dias no estádio (até 3). Ausente em versões antigas da API. */
-  upcoming?: UpcomingMatch[];
 };
 
 export type FanStats = {

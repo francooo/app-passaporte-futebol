@@ -12,8 +12,12 @@ describe("isUpcomingStatus", () => {
 });
 
 describe("upcomingWindow", () => {
-  it("vai de hoje até daqui a 14 dias (UTC)", () => {
-    expect(upcomingWindow(new Date("2026-11-17T22:30:00Z"))).toEqual({ from: "2026-11-17", to: "2026-12-01" });
+  it("vai de hoje até daqui a 30 dias (UTC)", () => {
+    expect(upcomingWindow(new Date("2026-11-17T22:30:00Z"))).toEqual({ from: "2026-11-17", to: "2026-12-17" });
+  });
+
+  it("aceita outra janela", () => {
+    expect(upcomingWindow(new Date("2026-11-17T22:30:00Z"), 14)).toEqual({ from: "2026-11-17", to: "2026-12-01" });
   });
 });
 

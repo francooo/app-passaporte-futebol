@@ -3,11 +3,17 @@
  * Usadas pelo sync (src/lib/matches/sync.ts) e pela consulta dos estádios perto (src/lib/matches/queries.ts).
  */
 
-/** Janela mostrada na tela de registro. */
+/** Janela dos estádios perto de você (registro, "Usar minha localização"). */
 export const UPCOMING_DAYS = 14;
 
-/** Jogos por estádio na lista. */
+/** Jogos por estádio na lista dos estádios perto. */
 export const UPCOMING_PER_STADIUM = 3;
+
+/** Janela do "próximo jogo" no mapa (ranking do país) e na busca de estádios: só o primeiro jogo. */
+export const NEXT_MATCH_DAYS = 30;
+
+/** Janela importada do provedor: cobre as duas anteriores. */
+export const UPCOMING_SYNC_DAYS = Math.max(UPCOMING_DAYS, NEXT_MATCH_DAYS);
 
 /** Status do football-data.org que indicam partida válida ainda por jogar (exclui adiada, cancelada, suspensa). */
 export const UPCOMING_STATUSES = ["SCHEDULED", "TIMED"] as const;
@@ -17,7 +23,7 @@ export function isUpcomingStatus(status: string) {
 }
 
 /** "AAAA-MM-DD" (UTC) de hoje e de daqui a `days` dias: janela pedida ao provedor. */
-export function upcomingWindow(now = new Date(), days = UPCOMING_DAYS) {
+export function upcomingWindow(now = new Date(), days = UPCOMING_SYNC_DAYS) {
   const from = now.toISOString().slice(0, 10);
   const to = new Date(now.getTime() + days * 86_400_000).toISOString().slice(0, 10);
   return { from, to };

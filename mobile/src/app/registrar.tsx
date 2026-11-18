@@ -393,7 +393,7 @@ function StadiumPicker({ stadium, onChange }: { stadium: StadiumSummary | null; 
               <Pressable
                 onPress={() => onChange(s)}
                 accessibilityRole="button"
-                accessibilityLabel={`${s.name}, ${place(s)}${s.upcoming?.length ? `, ${s.upcoming.length} ${s.upcoming.length === 1 ? "jogo" : "jogos"} nos próximos 14 dias` : ""}`}
+                accessibilityLabel={`${s.name}, ${place(s)}${s.upcoming?.length ? `, ${s.upcoming.length} ${s.upcoming.length === 1 ? "jogo" : "jogos"} nos próximos ${nearby ? 14 : 30} dias` : ""}`}
                 style={({ pressed }) => [styles.resultRow, pressed && { opacity: 0.85 }]}
               >
                 <StadiumThumb url={s.thumbUrl} size={44} />
@@ -414,6 +414,9 @@ function StadiumPicker({ stadium, onChange }: { stadium: StadiumSummary | null; 
           ))}
           {nearby && results.length > 0 && (
             <Text style={[type.suave, styles.small]}>Jogos das principais ligas (football-data.org) nos próximos 14 dias, no estádio do mandante.</Text>
+          )}
+          {!nearby && results.some((s) => s.upcoming?.length) && (
+            <Text style={[type.suave, styles.small]}>Próximo jogo das principais ligas (football-data.org) nos próximos 30 dias, no estádio do mandante.</Text>
           )}
         </View>
       )}
