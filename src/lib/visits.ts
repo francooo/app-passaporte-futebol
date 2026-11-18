@@ -422,7 +422,12 @@ export async function updateProfile(userId: string, input: { homeCity?: string |
   }
   if (input.favoriteTeamId !== undefined) {
     if (input.favoriteTeamId) {
-      const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, input.favoriteTeamId)).limit(1);
+      // Mesma regra de resolveTeam: time aprovado ou criado pelo próprio usuário.
+      const [team] = await db
+        .select({ id: teams.id })
+        .from(teams)
+        .where(and(eq(teams.id, input.favoriteTeamId), or(eq(teams.status, "approved"), eq(teams.createdBy, userId))))
+        .limit(1);
       if (!team) throw new VisitError(400, "Time não encontrado.", "favoriteTeamId");
     }
     changes.favoriteTeamId = input.favoriteTeamId ?? null;

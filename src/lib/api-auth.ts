@@ -7,6 +7,7 @@ import { auth } from "@/auth";
 import { db } from "@/db";
 import { apiTokens, users } from "@/db/schema";
 import { hashToken, newToken } from "@/lib/auth-core";
+import { sessionRevoked } from "@/lib/session-revocation";
 
 const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -46,16 +47,25 @@ export async function requireApiUser(request: Request) {
 }
 
 /**
+ * Usuário do cookie de sessão do Auth.js (web), ou null se não houver sessão,
+ * a conta não existir mais ou a sessão tiver sido revogada.
+ */
+export async function sessionUser() {
+  const session = await auth();
+  const id = session?.user?.id;
+  if (!id) return null;
+  const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  if (!user || sessionRevoked(session.authAt, user.sessionsValidAfter)) return null;
+  return user;
+}
+
+/**
  * Usuário da requisição, venha do app (Bearer) ou do web (cookie de sessão do Auth.js).
  * Permite que as mesmas rotas /api/* atendam as duas plataformas.
  */
 export async function requireUser(request: Request) {
   if (bearer(request)) return requireApiUser(request);
-  const session = await auth();
-  const id = session?.user?.id;
-  if (!id) return null;
-  const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
-  return user ?? null;
+  return sessionUser();
 }
 
 export type RequestUser = NonNullable<Awaited<ReturnType<typeof requireUser>>>;

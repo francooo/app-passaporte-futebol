@@ -5,7 +5,7 @@ import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { headers } from "next/headers";
 import type { ApiUser } from "@shared/api-types";
 import { db } from "@/db";
-import { passwordResetTokens, rateLimits, users } from "@/db/schema";
+import { apiTokens, passwordResetTokens, rateLimits, users } from "@/db/schema";
 import { sendEmail } from "@/lib/email";
 
 /**
@@ -100,7 +100,22 @@ export async function resetPassword(token: string, password: string) {
     .update(users)
     .set({ passwordHash: await bcrypt.hash(password, 12) })
     .where(eq(users.id, row.userId));
+  // Quem tinha a senha antiga (ou um token do app) perde o acesso.
+  await revokeAllSessions(row.userId);
   return true;
+}
+
+/**
+ * Derruba todas as sessões do usuário: tokens do app são revogados e cookies JWT
+ * do web emitidos até agora passam a ser recusados (ver sessionUser em api-auth.ts).
+ */
+export async function revokeAllSessions(userId: string) {
+  const now = new Date();
+  await db.update(users).set({ sessionsValidAfter: now }).where(eq(users.id, userId));
+  await db
+    .update(apiTokens)
+    .set({ revokedAt: now })
+    .where(and(eq(apiTokens.userId, userId), isNull(apiTokens.revokedAt)));
 }
 
 /**

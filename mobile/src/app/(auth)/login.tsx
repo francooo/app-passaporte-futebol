@@ -4,6 +4,7 @@ import { loginSchema } from "@shared/schemas";
 import { AuthShell } from "@/components/auth-shell";
 import { Button } from "@/components/button";
 import { Divider, FormMessage, TextLink } from "@/components/form-bits";
+import { GoogleButton } from "@/components/google-button";
 import { TextField } from "@/components/text-field";
 import { useAuth } from "@/lib/auth-context";
 import { useFormSubmit } from "@/lib/use-form-submit";
@@ -46,6 +47,7 @@ export default function LoginScreen() {
         <Button loading={form.pending} onPress={() => form.submit({ email, password })}>
           {form.pending ? "Entrando…" : "Entrar"}
         </Button>
+        <GoogleButton />
         <Divider />
         <TextLink href="/cadastro">Criar conta</TextLink>
       </View>

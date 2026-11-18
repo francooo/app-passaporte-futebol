@@ -54,6 +54,8 @@ export const users = pgTable("users", {
   isPrivate: boolean("is_private").notNull().default(false),
   role: roleEnum("role").notNull().default("user"),
   premiumUntil: timestamp("premium_until", { mode: "date" }),
+  /** Sessões web (JWT) iniciadas antes deste instante são recusadas (troca de senha, Google assumindo a conta). */
+  sessionsValidAfter: timestamp("sessions_valid_after", { mode: "date" }),
   createdAt: createdAt(),
 });
 

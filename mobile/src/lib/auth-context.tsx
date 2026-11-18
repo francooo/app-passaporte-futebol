@@ -2,6 +2,7 @@ import { createContext, use, useCallback, useEffect, useMemo, useState, type Rea
 import type { ApiUser, AuthResponse, MessageResponse } from "@shared/api-types";
 import type { LoginInput, RecoverInput, SignupInput } from "@shared/schemas";
 import { api, ApiRequestError } from "./api";
+import { getGoogleIdToken, googleSignOut } from "./google-signin";
 import { tokenStorage } from "./token-storage";
 
 type Status = "loading" | "signedOut" | "signedIn";
@@ -13,6 +14,8 @@ type AuthContextValue = {
   token: string | null;
   signIn: (input: LoginInput) => Promise<void>;
   signUp: (input: SignupInput) => Promise<void>;
+  /** Abre o seletor de contas do Google; rejeita com GoogleCancelled se o usuário desistir. */
+  signInWithGoogle: () => Promise<void>;
   recover: (input: RecoverInput) => Promise<string>;
   signOut: () => Promise<void>;
 };
@@ -55,10 +58,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       token,
       signIn: async (input) => start(await api<AuthResponse>("/api/mobile/auth/login", { method: "POST", body: input })),
       signUp: async (input) => start(await api<AuthResponse>("/api/mobile/auth/register", { method: "POST", body: input })),
+      signInWithGoogle: async () => {
+        const idToken = await getGoogleIdToken();
+        await start(await api<AuthResponse>("/api/mobile/auth/google", { method: "POST", body: { idToken } }));
+      },
       recover: async (input) =>
         (await api<MessageResponse>("/api/mobile/auth/recover", { method: "POST", body: input })).message,
       signOut: async () => {
         await api("/api/mobile/auth/logout", { method: "POST", token }).catch(() => {});
+        await googleSignOut();
         await tokenStorage.clear();
         setToken(null);
         setUser(null);

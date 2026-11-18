@@ -7,17 +7,32 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "android": { "buildType": "apk" },
-      "env": { "EXPO_PUBLIC_API_URL": "https://app-passaporte-futebol.vercel.app" }
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://app-passaporte-futebol.vercel.app",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "471522397558-pa8jpn6mgh41d8q7b6oa3lnl5s386qgd.apps.googleusercontent.com"
+      }
     },
     "preview": {
       "distribution": "internal",
-      "android": { "buildType": "apk" },
-      "env": { "EXPO_PUBLIC_API_URL": "https://app-passaporte-futebol.vercel.app" }
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://app-passaporte-futebol.vercel.app",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "471522397558-pa8jpn6mgh41d8q7b6oa3lnl5s386qgd.apps.googleusercontent.com"
+      }
     },
     "production": {
-      "android": { "buildType": "app-bundle" },
-      "env": { "EXPO_PUBLIC_API_URL": "https://app-passaporte-futebol.vercel.app" }
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://app-passaporte-futebol.vercel.app",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "471522397558-pa8jpn6mgh41d8q7b6oa3lnl5s386qgd.apps.googleusercontent.com"
+      }
     }
   }
 }

@@ -1,10 +1,11 @@
 "use server";
 
 import { AuthError } from "next-auth";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { fieldErrors, loginSchema, recoverSchema, resetSchema, signupSchema } from "@shared/schemas";
 import { signIn, signOut } from "@/auth";
-import { createUser, requestPasswordReset, resetPassword } from "@/lib/auth-core";
+import { createUser, hitRateLimit, requestPasswordReset, resetPassword } from "@/lib/auth-core";
 
 export type FormState = {
   ok?: boolean;
@@ -27,9 +28,18 @@ function safeNext(value: FormDataEntryValue | null) {
   return typeof value === "string" && value.startsWith("/app") ? value : "/app";
 }
 
+const LOGIN_WINDOW = 15 * 60;
+
 export async function loginAction(_: FormState, formData: FormData): Promise<FormState> {
   const parsed = loginSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { errors: fieldErrors(parsed.error), values: keep(formData) };
+
+  // Mesmos limites do login do app (src/app/api/mobile/auth/login/route.ts).
+  const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+  const allowed =
+    (await hitRateLimit(`login:ip:${ip}`, 30, LOGIN_WINDOW)) &&
+    (await hitRateLimit(`login:email:${parsed.data.email}`, 10, LOGIN_WINDOW));
+  if (!allowed) return { message: "Muitas tentativas. Aguarde alguns minutos e tente de novo.", values: keep(formData) };
 
   try {
     await signIn("credentials", { ...parsed.data, redirectTo: safeNext(formData.get("next")) });

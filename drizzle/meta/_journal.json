@@ -43,6 +43,13 @@
       "when": 1794882787505,
       "tag": "0005_busca_sem_acentos",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795016401513,
+      "tag": "0006_sessoes_revogaveis",
+      "breakpoints": true
     }
   ]
 }

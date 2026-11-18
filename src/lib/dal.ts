@@ -1,10 +1,7 @@
 import "server-only";
-import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
-import { auth } from "@/auth";
-import { db } from "@/db";
-import { users } from "@/db/schema";
+import { sessionUser } from "@/lib/api-auth";
 
 export type CurrentUser = {
   id: string;
@@ -23,23 +20,10 @@ export async function getCurrentUser(): Promise<CurrentUser> {
   // auth() renova o cookie JWT (IV aleatório): só pode rodar no request real,
   // nunca no prerender/prefetch do Cache Components.
   await connection();
-  const session = await auth();
-  const id = session?.user?.id;
-  if (!id) redirect("/login");
-
-  const [user] = await db
-    .select({
-      id: users.id,
-      name: users.name,
-      email: users.email,
-      image: users.image,
-      role: users.role,
-      premiumUntil: users.premiumUntil,
-    })
-    .from(users)
-    .where(eq(users.id, id))
-    .limit(1);
+  // Mesma regra das rotas /api/*: sessão revogada conta como deslogado.
+  const user = await sessionUser();
   if (!user) redirect("/login");
 
-  return user;
+  const { id, name, email, image, role, premiumUntil } = user;
+  return { id, name, email, image, role, premiumUntil };
 }

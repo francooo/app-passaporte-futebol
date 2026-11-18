@@ -41,11 +41,14 @@ function NextField() {
 const notices: Record<string, string> = {
   redefinida: "Senha redefinida. Entre com a nova senha.",
   OAuthAccountNotLinked: "Este e-mail já está ligado a outra forma de login.",
+  AccessDenied: "Não foi possível entrar com essa conta Google. Use uma conta com e-mail confirmado.",
 };
+const GENERIC_ERROR = "Não foi possível entrar agora. Tente de novo.";
 
 function LoginNotice() {
   const params = useSearchParams();
-  const notice = notices[params.get("senha") ?? ""] ?? notices[params.get("error") ?? ""];
+  const error = params.get("error");
+  const notice = notices[params.get("senha") ?? ""] ?? (error ? (notices[error] ?? GENERIC_ERROR) : undefined);
   if (!notice) return null;
   return (
     <p role="status" className="rounded-lg bg-visita px-3 py-2 text-sm text-estadio">
@@ -84,7 +87,7 @@ export function LoginForm({ googleEnabled }: { googleEnabled: boolean }) {
   );
 }
 
-function GoogleButton() {
+function GoogleButton({ label = "Entrar com Google" }: { label?: string }) {
   return (
     <form action={googleSignInAction}>
       <Suspense fallback={null}>
@@ -97,24 +100,27 @@ function GoogleButton() {
           <path fill="#FBBC05" d="M5.3 14.3a7.2 7.2 0 0 1 0-4.6V6.6H1.3a12 12 0 0 0 0 10.8l4-3.1Z" />
           <path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4A12 12 0 0 0 1.3 6.6l4 3.1c.9-2.9 3.6-4.9 6.7-4.9Z" />
         </svg>
-        Entrar com Google
+        {label}
       </Button>
     </form>
   );
 }
 
-export function SignupForm() {
+export function SignupForm({ googleEnabled }: { googleEnabled: boolean }) {
   const [state, action, pending] = useActionState(signupAction, initial);
   return (
-    <form action={action} className="flex flex-col gap-4" noValidate>
-      <TextField label="Nome" name="name" icon="profile" autoComplete="name" defaultValue={state.values?.name} required error={state.errors?.name?.[0]} />
-      <TextField label="E-mail" name="email" type="email" icon="email" autoComplete="email" inputMode="email" defaultValue={state.values?.email} required error={state.errors?.email?.[0]} />
-      <TextField label="Senha" name="password" type="password" icon="lock" autoComplete="new-password" hint="Mínimo de 8 caracteres." required error={state.errors?.password?.[0]} />
-      <TextField label="Confirmar senha" name="confirm" type="password" icon="lock" autoComplete="new-password" required error={state.errors?.confirm?.[0]} />
-      <FormMessage state={state} />
-      <Button type="submit" disabled={pending}>
-        {pending ? "Criando…" : "Criar conta"}
-      </Button>
+    <div className="flex flex-col gap-4">
+      <form action={action} className="flex flex-col gap-4" noValidate>
+        <TextField label="Nome" name="name" icon="profile" autoComplete="name" defaultValue={state.values?.name} required error={state.errors?.name?.[0]} />
+        <TextField label="E-mail" name="email" type="email" icon="email" autoComplete="email" inputMode="email" defaultValue={state.values?.email} required error={state.errors?.email?.[0]} />
+        <TextField label="Senha" name="password" type="password" icon="lock" autoComplete="new-password" hint="Mínimo de 8 caracteres." required error={state.errors?.password?.[0]} />
+        <TextField label="Confirmar senha" name="confirm" type="password" icon="lock" autoComplete="new-password" required error={state.errors?.confirm?.[0]} />
+        <FormMessage state={state} />
+        <Button type="submit" disabled={pending}>
+          {pending ? "Criando…" : "Criar conta"}
+        </Button>
+      </form>
+      {googleEnabled && <GoogleButton label="Criar conta com Google" />}
       <Divider />
       <p className="text-center text-sm text-suave">
         Já tem conta?{" "}
@@ -122,7 +128,7 @@ export function SignupForm() {
           Entrar
         </Link>
       </p>
-    </form>
+    </div>
   );
 }
 

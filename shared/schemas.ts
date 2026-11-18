@@ -30,6 +30,9 @@ export const signupSchema = z
 
 export const recoverSchema = z.object({ email: emailSchema });
 
+/** Login com Google no app: ID token devolvido pelo Google Sign-In nativo. */
+export const googleLoginSchema = z.object({ idToken: z.string().min(1).max(4096) });
+
 export const resetSchema = z
   .object({ token: z.string().min(1), password: newPasswordSchema, confirm: z.string() })
   .refine(passwordsMatch, mismatch);
