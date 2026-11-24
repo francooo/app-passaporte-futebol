@@ -56,6 +56,11 @@ function toSummary(r: SummaryRow): StadiumSummary {
   };
 }
 
+/** Próximo jogo (30 dias) de um estádio: registro aberto a partir da página do estádio (preenche a partida). */
+export async function nextMatchAt(stadiumId: string) {
+  return (await upcomingByStadium([stadiumId], { days: NEXT_MATCH_DAYS, perStadium: 1 })).get(stadiumId) ?? [];
+}
+
 /** Próximo jogo (30 dias) de cada estádio da lista: ranking do país no mapa e busca do registro. */
 async function withNextMatch(items: StadiumSummary[]): Promise<StadiumSummary[]> {
   const upcoming = await upcomingByStadium(items.map((s) => s.id), { days: NEXT_MATCH_DAYS, perStadium: 1 });

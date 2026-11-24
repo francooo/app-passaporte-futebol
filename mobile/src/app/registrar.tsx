@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ScrollViewInstance } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import type { CompetitionOption, MatchResult, NearbyStadium, StadiumSummary, VisitDetail } from "@shared/api-types";
+import type { CompetitionOption, MatchResult, NearbyStadium, StadiumSummary, UpcomingMatch, VisitDetail } from "@shared/api-types";
 import { PHOTO_LIMITS, type VisitInput } from "@shared/schemas";
 import { Button } from "@/components/button";
 import { KitIcon } from "@/components/kit-icon";
@@ -26,7 +26,17 @@ import { colors, font, radius, type } from "@/theme";
 type Kind = "visit" | "match";
 type Step = 1 | 2 | 3;
 /** pending: o jogo ainda não terminou — homeScore/awayScore viram palpite (opcional) e kickoff é o início ("HH:MM"). */
-type Manual = { home: ManualTeam; away: ManualTeam; homeScore: string; awayScore: string; competition: string; pending: boolean; kickoff: string };
+type Manual = {
+  home: ManualTeam;
+  away: ManualTeam;
+  homeScore: string;
+  awayScore: string;
+  competition: string;
+  pending: boolean;
+  kickoff: string;
+  /** Preenchido a partir do próximo jogo do estádio: com os mesmos times, o carimbo é ligado a essa partida. */
+  fromMatch?: UpcomingMatch;
+};
 /** Palpite digitado (texto dos campos). */
 type Guess = { home: string; away: string };
 
@@ -49,6 +59,32 @@ const maskTime = (t: string) => {
 };
 const validTime = (t: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
 const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
+const pad = (n: number) => String(n).padStart(2, "0");
+/** "AAAA-MM-DD" e "HH:MM" de um horário ISO, no fuso do aparelho. */
+const localDay = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+const localTime = (iso: string) => {
+  const d = new Date(iso);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+const emptyManual: Manual = { home: emptyTeam, away: emptyTeam, homeScore: "", awayScore: "", competition: "", pending: false, kickoff: "" };
+
+/** Preenchimento manual a partir do próximo jogo do estádio (times, competição e início; palpite vazio). */
+function manualFromUpcoming(m: UpcomingMatch): Manual {
+  return { home: m.home, away: m.away, homeScore: "", awayScore: "", competition: m.competition.name, pending: true, kickoff: localTime(m.utcDate), fromMatch: m };
+}
+
+/** Próximo jogo do estádio que serve para preencher: só sem data escolhida ou com a data do próprio jogo. */
+function prefillMatch(stadium: StadiumSummary, date: string | null) {
+  const next = stadium.upcoming?.[0];
+  return next && (!date || date === localDay(next.utcDate)) ? next : null;
+}
+
+/** O usuário manteve os times do jogo preenchido? Então o carimbo vai ligado à partida (resultado automático). */
+const keepsMatch = (m: Manual) =>
+  Boolean(m.fromMatch && m.home.id && m.home.id === m.fromMatch.home.id && m.away.id && m.away.id === m.fromMatch.away.id);
 
 /**
  * Registro de visita ou partida (telas 01 e 02 do kit v06, igual ao web):
@@ -86,6 +122,7 @@ export default function RegistrarScreen() {
           capacity: s.capacity,
           capacityNeedsReview: s.capacityNeedsReview,
           thumbUrl: s.thumbUrl,
+          upcoming: s.upcoming,
         }),
       () => {},
     );
@@ -113,7 +150,12 @@ export default function RegistrarScreen() {
         Object.assign(body, { predictedHomeScore: Number(guess.home), predictedAwayScore: Number(guess.away) });
       }
     }
-    if (kind === "match" && !match && manual) {
+    if (kind === "match" && !match && manual && keepsMatch(manual)) {
+      // Mesmo jogo do preenchimento automático: ligado à partida, o resultado chega sozinho
+      body.matchId = manual.fromMatch!.id;
+      const typed = { home: manual.homeScore, away: manual.awayScore };
+      if (guessFilled(typed)) Object.assign(body, { predictedHomeScore: Number(typed.home), predictedAwayScore: Number(typed.away) });
+    } else if (kind === "match" && !match && manual) {
       Object.assign(body, {
         homeTeamId: manual.home.id,
         homeTeamName: manual.home.name,
@@ -128,7 +170,11 @@ export default function RegistrarScreen() {
         Object.assign(body, {
           resultPending: true,
           // Início no fuso do aparelho, no dia escolhido (ou hoje)
-          kickoffAt: new Date(y, mo - 1, d, h, min).toISOString(),
+          // Horário do jogo preenchido mantido: usa o dele (pode ser outro dia)
+          kickoffAt:
+            manual.fromMatch && manual.kickoff === localTime(manual.fromMatch.utcDate)
+              ? manual.fromMatch.utcDate
+              : new Date(y, mo - 1, d, h, min).toISOString(),
           ...(guessFilled(typed) ? { predictedHomeScore: Number(typed.home), predictedAwayScore: Number(typed.away) } : {}),
         });
       } else {
@@ -162,7 +208,7 @@ export default function RegistrarScreen() {
     router.replace({ pathname: "/carimbo/[id]", params: { id: visit.id, ...(failed ? { fotos_falharam: String(failed), motivo: reason } : {}) } });
   }
 
-  const effectiveDate = date ?? (match ? match.utcDate.slice(0, 10) : null);
+  const effectiveDate = date ?? (match ? match.utcDate.slice(0, 10) : manual?.fromMatch ? localDay(manual.fromMatch.utcDate) : null);
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -507,7 +553,9 @@ function MatchStep({
   const [competitions, setCompetitions] = useState<CompetitionOption[]>([]);
   const [results, setResults] = useState<MatchResult[] | null>(null);
   const [state, setState] = useState<{ loading: boolean; error: string | null }>({ loading: true, error: null });
-  const [mode, setMode] = useState<"busca" | "manual">(manual ? "manual" : "busca");
+  const prefill = prefillMatch(stadium, date);
+  // Com o próximo jogo do estádio conhecido, abre no preenchimento (já com os times)
+  const [mode, setMode] = useState<"busca" | "manual">(manual || prefill ? "manual" : "busca");
 
   useEffect(() => {
     visitsApi(token).competitions().then(setCompetitions, () => {});
@@ -595,16 +643,30 @@ function MatchStep({
           </View>
         </>
       ) : (
-        <ManualForm initial={manual} competitions={competitions} onSubmit={onManual} />
+        <ManualForm
+          initial={manual ?? (prefill ? manualFromUpcoming(prefill) : null)}
+          stadiumName={stadium.name}
+          competitions={competitions}
+          onSubmit={onManual}
+        />
       )}
     </>
   );
 }
 
-function ManualForm({ initial, competitions, onSubmit }: { initial: Manual | null; competitions: CompetitionOption[]; onSubmit: (m: Manual) => void }) {
-  const [value, setValue] = useState<Manual>(
-    initial ?? { home: emptyTeam, away: emptyTeam, homeScore: "", awayScore: "", competition: "", pending: false, kickoff: "" },
-  );
+function ManualForm({
+  initial,
+  stadiumName,
+  competitions,
+  onSubmit,
+}: {
+  initial: Manual | null;
+  stadiumName: string;
+  competitions: CompetitionOption[];
+  onSubmit: (m: Manual) => void;
+}) {
+  const [value, setValue] = useState<Manual>(initial ?? emptyManual);
+  const from = value.fromMatch;
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   function submit() {
@@ -629,6 +691,27 @@ function ManualForm({ initial, competitions, onSubmit }: { initial: Manual | nul
     <Ticket innerStyle={styles.gap}>
       <Text style={[type.titulo, styles.manualTitle]}>Preencher manualmente</Text>
       <Text style={type.corpo}>Não encontrou a partida? Registre à mão.</Text>
+      {from && (
+        <View style={styles.prefill} accessibilityLiveRegion="polite">
+          <KitIcon name="calendar" size={16} />
+          <View style={styles.flex}>
+            <Text style={styles.prefillText}>
+              Preenchido com o próximo jogo do {stadiumName} · {from.competition.name} · {formatKickoff(from.utcDate)}. Pode alterar.
+            </Text>
+            {keepsMatch(value) && <Text style={[type.suave, styles.small]}>Com esses times, o resultado chega sozinho depois do jogo.</Text>}
+          </View>
+          <Pressable
+            onPress={() => {
+              setValue(emptyManual);
+              setErrors({});
+            }}
+            accessibilityRole="button"
+            hitSlop={8}
+          >
+            <Text style={styles.link}>Limpar</Text>
+          </Pressable>
+        </View>
+      )}
       <TeamInput label="Mandante" value={value.home} onChange={(home) => setValue((v) => ({ ...v, home }))} error={errors.home} />
       <TeamInput label="Visitante" value={value.away} onChange={(away) => setValue((v) => ({ ...v, away }))} error={errors.away} />
       <Pressable
@@ -679,7 +762,7 @@ function ManualForm({ initial, competitions, onSubmit }: { initial: Manual | nul
           ))}
         </ScrollView>
       )}
-      <Button onPress={submit}>Usar preenchimento manual</Button>
+      <Button onPress={submit}>{keepsMatch(value) ? "Usar este jogo" : "Usar preenchimento manual"}</Button>
     </Ticket>
   );
 }
@@ -758,6 +841,8 @@ const styles = StyleSheet.create({
   gapSm: { gap: 4 },
   row: { flexDirection: "row", gap: 8 },
   flex: { flex: 1, minWidth: 0 },
+  prefill: { flexDirection: "row", alignItems: "flex-start", gap: 8, padding: 10, borderRadius: 8, backgroundColor: colors.partida },
+  prefillText: { fontFamily: font.sans, fontSize: 14, color: colors.tinta },
   center: { textAlign: "center" },
   small: { fontSize: 11 },
   searchBox: {

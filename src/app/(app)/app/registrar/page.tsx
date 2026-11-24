@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { RegistroForm } from "@/components/visits/registro-form";
-import { getStadium } from "@/lib/catalog/queries";
+import { getStadium, nextMatchAt } from "@/lib/catalog/queries";
 import { getCurrentUser } from "@/lib/dal";
 
 export const metadata: Metadata = { title: "Registrar experiência" };
@@ -32,6 +32,7 @@ async function Registrar({ searchParams }: Pick<PageProps<"/app/registrar">, "se
               capacity: stadium.capacity,
               capacityNeedsReview: stadium.capacityNeedsReview,
               thumbUrl: stadium.thumbUrl,
+              upcoming: await nextMatchAt(stadium.id),
             }
           : null
       }
