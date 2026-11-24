@@ -1,4 +1,4 @@
-import type { FanStats, TeamRef } from "@shared/api-types";
+import type { FanStats, Sport, TeamRef } from "@shared/api-types";
 
 /**
  * Estatísticas do torcedor ("Sua jornada em números"), calculadas a partir dos registros.
@@ -7,6 +7,8 @@ import type { FanStats, TeamRef } from "@shared/api-types";
 
 export type StatVisit = {
   kind: "visit" | "match";
+  /** Ausente = futebol (registros antigos). */
+  sport?: Sport;
   date: string | null;
   stadium: {
     id: string;
@@ -54,6 +56,10 @@ export function resultFor(teamId: string, v: Pick<StatVisit, "home" | "away" | "
 
 export function computeStats(visits: StatVisit[], { home, teamId }: StatOptions): Omit<FanStats, "homeCity" | "predictions"> {
   const matches = visits.filter((v) => v.kind === "match");
+  // "Desempenho do seu time": um só time do coração, de futebol
+  const football = matches.filter((v) => (v.sport ?? "futebol") === "futebol");
+  const sports = new Map<Sport, number>();
+  for (const v of matches) sports.set(v.sport ?? "futebol", (sports.get(v.sport ?? "futebol") ?? 0) + 1);
 
   // Km: ida e volta entre a cidade do usuário e o estádio, por registro
   let km: number | null = null;
@@ -73,9 +79,9 @@ export function computeStats(visits: StatVisit[], { home, teamId }: StatOptions)
     years.set(year, (years.get(year) ?? 0) + 1);
   }
 
-  // Times vistos em partidas (com id), do mais frequente para o menos
+  // Times vistos em partidas de futebol (com id), do mais frequente para o menos
   const seen = new Map<string, { team: TeamRef; count: number }>();
-  for (const v of matches) {
+  for (const v of football) {
     for (const t of [v.home, v.away]) {
       if (!t?.id) continue;
       const entry = seen.get(t.id) ?? { team: t, count: 0 };
@@ -91,7 +97,7 @@ export function computeStats(visits: StatVisit[], { home, teamId }: StatOptions)
     let wins = 0;
     let draws = 0;
     let losses = 0;
-    for (const v of matches) {
+    for (const v of football) {
       const r = resultFor(chosen.id, v);
       if (r === "W") wins++;
       else if (r === "D") draws++;
@@ -120,6 +126,7 @@ export function computeStats(visits: StatVisit[], { home, teamId }: StatOptions)
     visits: visits.length - matches.length,
     km,
     byYear: [...years.entries()].sort((a, b) => a[0] - b[0]).map(([year, count]) => ({ year, count })),
+    bySport: [...sports.entries()].sort((a, b) => b[1] - a[1]).map(([sport, count]) => ({ sport, matches: count })),
     team,
     teamsSeen,
     biggestStadiums: [...biggest.values()].sort((a, b) => b.capacity - a.capacity).slice(0, 5),

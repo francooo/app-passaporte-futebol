@@ -4,7 +4,8 @@ import { db } from "@/db";
 import { matches, teams, visits } from "@/db/schema";
 import { apiFootball, apiFootballEnabled } from "@/lib/matches/api-football";
 import { footballData } from "@/lib/matches/football-data";
-import { GIVE_UP_MS, isFinalStatus, MATCH_DURATION_MS, officialFdScore, RECHECK_MS, type Score } from "./rules";
+import { SPORT_INFO, SPORTS, type Sport } from "@shared/sports";
+import { expectedEndAt, GIVE_UP_MS, isFinalStatus, officialFdScore, RECHECK_MS, type ResultProvider, type Score } from "./rules";
 import { pickFixture, pickTeam, teamSearchTerm } from "./pick";
 
 /**
@@ -18,17 +19,17 @@ const FINAL_FD = ["FINISHED", "AWARDED"];
 
 /**
  * Copia o placar das partidas encerradas para os carimbos ligados a elas: fecha os pendentes e corrige
- * os finais que vieram do football-data (ex.: placar refeito sem os pênaltis). Só SQL, sem chamadas externas.
+ * os finais que vieram do provedor da partida (ex.: placar refeito sem os pênaltis). Só SQL, sem chamadas externas.
  */
 export async function syncResultsFromMatches(userId?: string) {
   const result = await db.execute(sql`
     update ${visits} v
-    set home_score = m.home_score, away_score = m.away_score, result_status = 'final', result_source = 'football-data'
+    set home_score = m.home_score, away_score = m.away_score, result_status = 'final', result_source = m.provider
     from ${matches} m
     where v.match_id = m.id
       and m.status in (${sql.join(FINAL_FD.map((s) => sql`${s}`), sql`, `)})
       and m.home_score is not null and m.away_score is not null
-      and (v.result_status = 'pending' or (v.result_source = 'football-data'
+      and (v.result_status = 'pending' or (v.result_source = m.provider
            and (v.home_score is distinct from m.home_score or v.away_score is distinct from m.away_score)))
       ${userId ? sql`and v.user_id = ${userId}` : sql``}
   `);
@@ -37,6 +38,7 @@ export async function syncResultsFromMatches(userId?: string) {
 
 type Pending = {
   id: string;
+  sport: Sport;
   matchId: string | null;
   externalFixtureId: string | null;
   kickoffAt: Date;
@@ -48,10 +50,13 @@ type Pending = {
 export async function resolvePendingResults({ userId, limit = 3, now = new Date() }: { userId?: string; limit?: number; now?: Date } = {}) {
   await syncResultsFromMatches(userId);
 
-  const ended = new Date(now.getTime() - MATCH_DURATION_MS);
+  // Pré-filtro pelo esporte de jogo mais curto; o fim previsto de cada carimbo é conferido abaixo
+  const shortest = Math.min(...SPORTS.map((s) => SPORT_INFO[s].durationMs));
+  const ended = new Date(now.getTime() - shortest);
   const rows = await db
     .select({
       id: visits.id,
+      sport: visits.sport,
       matchId: visits.matchId,
       externalFixtureId: visits.externalFixtureId,
       kickoffAt: visits.kickoffAt,
@@ -71,7 +76,9 @@ export async function resolvePendingResults({ userId, limit = 3, now = new Date(
     .orderBy(visits.kickoffAt)
     .limit(limit);
   // kickoffAt não é nulo aqui (filtro lte acima)
-  const due: Pending[] = rows.map((r) => ({ ...r, kickoffAt: r.kickoffAt! }));
+  const due: Pending[] = rows
+    .map((r) => ({ ...r, kickoffAt: r.kickoffAt! }))
+    .filter((r) => expectedEndAt(r.kickoffAt, r.sport).getTime() <= now.getTime());
   if (!due.length) return 0;
 
   // Marca a tentativa antes das chamadas: aberturas simultâneas não repetem a busca
@@ -80,7 +87,7 @@ export async function resolvePendingResults({ userId, limit = 3, now = new Date(
   let closed = 0;
   for (const v of due) {
     try {
-      const done = v.matchId ? await resolveFromFootballData(v) : await resolveFromApiFootball(v);
+      const done = v.matchId ? await resolveFromMatch(v) : await resolveManual(v);
       if (done) closed++;
     } catch (error) {
       console.error(`[resultado] carimbo ${v.id}:`, error instanceof Error ? error.message : error);
@@ -89,17 +96,18 @@ export async function resolvePendingResults({ userId, limit = 3, now = new Date(
   return closed;
 }
 
-async function setFinal(visitId: string, score: Score, source: "football-data" | "api-football") {
+async function setFinal(visitId: string, score: Score, source: ResultProvider) {
   await db
     .update(visits)
     .set({ homeScore: score.home, awayScore: score.away, resultStatus: "final", resultSource: source })
     .where(and(eq(visits.id, visitId), eq(visits.resultStatus, "pending")));
 }
 
-/** Partida escolhida em "Encontre a partida": atualiza a partida pelo provedor e copia o placar. */
-async function resolveFromFootballData(v: Pending) {
+/** Partida escolhida em "Encontre a partida": atualiza a partida pelo provedor dela e copia o placar. */
+async function resolveFromMatch(v: Pending) {
   const [match] = await db.select().from(matches).where(eq(matches.id, v.matchId!)).limit(1);
   if (!match) return false;
+  if (match.provider !== "football-data") return false;
 
   let { status, homeScore, awayScore, utcDate } = match;
   if (!FINAL_FD.includes(status)) {
@@ -125,7 +133,13 @@ async function resolveFromFootballData(v: Pending) {
 
 const AF_DATE_WINDOW_MS = 30 * 60 * 60 * 1000;
 
-/** Preenchimento manual: acha o jogo na API-Football (time + dia) e lê o placar. */
+/** Preenchimento manual: só futebol tem fonte por enquanto (API-Football). */
+async function resolveManual(v: Pending) {
+  if (v.sport === "futebol") return resolveFromApiFootball(v);
+  return false;
+}
+
+/** Preenchimento manual de futebol: acha o jogo na API-Football (time + dia) e lê o placar. */
 async function resolveFromApiFootball(v: Pending) {
   if (!apiFootballEnabled() || !v.homeTeamId) return false;
 

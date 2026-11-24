@@ -14,7 +14,9 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import type { AdapterAccountType } from "next-auth/adapters";
+import { SPORTS, VENUE_TYPES } from "../../shared/sports";
 
 const id = () =>
   text("id")
@@ -31,6 +33,9 @@ export const roleEnum = pgEnum("role", ["user", "moderator", "admin"]);
 export const statusEnum = pgEnum("catalog_status", ["approved", "pending", "rejected"]);
 export const teamKindEnum = pgEnum("team_kind", ["club", "national"]);
 export const visitKindEnum = pgEnum("visit_kind", ["visit", "match"]);
+/** Esportes (shared/sports.ts). Registros e partidas antigos são futebol. */
+export const sportEnum = pgEnum("sport", SPORTS);
+export const venueTypeEnum = pgEnum("venue_type", VENUE_TYPES);
 
 // ── Auth.js (formato exigido pelo @auth/drizzle-adapter) ─────────────────────
 
@@ -166,6 +171,9 @@ export const stadiums = pgTable(
     addressSource: text("address_source"),
     openedOn: date("opened_on", { mode: "date" }),
     clubs: text("clubs").array(),
+    /** Esportes jogados no local (filtro da busca do registro). */
+    sports: sportEnum("sports").array().notNull().default(sql`'{futebol}'::sport[]`),
+    venueType: venueTypeEnum("venue_type").notNull().default("estadio"),
     website: text("website"),
     photoUrl: text("photo_url"),
     photoAuthor: text("photo_author"),
@@ -191,6 +199,7 @@ export const teams = pgTable(
     id: id(),
     name: text("name").notNull(),
     country: text("country").notNull(),
+    sport: sportEnum("sport").notNull().default("futebol"),
     kind: teamKindEnum("kind").notNull().default("club"),
     shortName: text("short_name"),
     crestUrl: text("crest_url"),
@@ -201,6 +210,8 @@ export const teams = pgTable(
     /** Origem: "football-data" (importado) ou null (criado por usuário no preenchimento manual). */
     provider: text("provider"),
     providerId: text("provider_id"),
+    /** Ginásio/estádio do mandante no catálogo (jogos de vôlei não trazem o local). */
+    homeStadiumId: text("home_stadium_id").references((): AnyPgColumn => stadiums.id, { onDelete: "set null" }),
     specialBadge: text("special_badge"),
     status: statusEnum("status").notNull().default("pending"),
     createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
@@ -209,10 +220,12 @@ export const teams = pgTable(
   (t) => [index("teams_name_idx").on(t.name), uniqueIndex("teams_provider_idx").on(t.provider, t.providerId)],
 );
 
-/** Competições importadas do football-data.org (código: BSA, PL, CL…). */
+/** Competições importadas (football-data.org: BSA, PL, CL…; API-Sports: bkb-26, vlb-25…). */
 export const competitions = pgTable("competitions", {
   code: text("code").primaryKey(),
   name: text("name").notNull(),
+  sport: sportEnum("sport").notNull().default("futebol"),
+  provider: text("provider").notNull().default("football-data"),
   country: text("country"),
   emblemUrl: text("emblem_url"),
   lastSyncedAt: timestamp("last_synced_at", { mode: "date" }),
@@ -226,6 +239,7 @@ export const matches = pgTable(
     id: id(),
     provider: text("provider").notNull().default("football-data"),
     providerId: text("provider_id").notNull(),
+    sport: sportEnum("sport").notNull().default("futebol"),
     competitionCode: text("competition_code")
       .notNull()
       .references(() => competitions.code, { onDelete: "cascade" }),
@@ -262,6 +276,7 @@ export const visits = pgTable(
       .notNull()
       .references(() => stadiums.id, { onDelete: "restrict" }),
     kind: visitKindEnum("kind").notNull(),
+    sport: sportEnum("sport").notNull().default("futebol"),
     /** Opcional: "pode registrar sem data" */
     date: date("date", { mode: "date" }),
     /** Partida escolhida em "Encontre a partida" (null = preenchimento manual ou visita). */

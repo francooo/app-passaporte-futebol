@@ -2,6 +2,7 @@ import "server-only";
 import { and, asc, desc, eq, gte, inArray, lte, or, sql, type SQL } from "drizzle-orm";
 import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { CompetitionOption, MatchResult, TeamRef, UpcomingMatch } from "@shared/api-types";
+import type { Sport } from "@shared/sports";
 import { db } from "@/db";
 import { competitions, matches, teams } from "@/db/schema";
 import { groupByStadium, UPCOMING_DAYS, UPCOMING_PER_STADIUM, UPCOMING_STATUSES } from "./upcoming";
@@ -30,12 +31,14 @@ export async function searchMatches({
   competition,
   date,
   stadiumId,
+  sport,
   limit = 20,
 }: {
   q?: string | null;
   competition?: string | null;
   date?: string | null;
   stadiumId?: string | null;
+  sport?: Sport | null;
   limit?: number;
 }): Promise<MatchResult[]> {
   const terms = (q ?? "")
@@ -64,6 +67,7 @@ export async function searchMatches({
   }
   if (competition) conditions.push(eq(matches.competitionCode, competition));
   if (stadiumId) conditions.push(eq(matches.stadiumId, stadiumId));
+  if (sport) conditions.push(eq(matches.sport, sport));
   if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
     const day = new Date(`${date}T12:00:00Z`).getTime();
     conditions.push(gte(matches.utcDate, new Date(day - 3 * 86_400_000)), lte(matches.utcDate, new Date(day + 3 * 86_400_000)));
@@ -72,6 +76,7 @@ export async function searchMatches({
   const rows = await db
     .select({
       id: matches.id,
+      sport: matches.sport,
       utcDate: matches.utcDate,
       status: matches.status,
       homeScore: matches.homeScore,
@@ -96,6 +101,7 @@ export async function searchMatches({
   });
   return rows.map((r) => ({
     id: r.id,
+    sport: r.sport,
     utcDate: r.utcDate.toISOString(),
     status: r.status,
     homeScore: r.homeScore,
@@ -114,16 +120,21 @@ export async function getMatch(id: string) {
   return { ...row, competitionName: comp?.name ?? row.competitionCode };
 }
 
-export async function listCompetitions(): Promise<CompetitionOption[]> {
+export async function listCompetitions(sport?: Sport | null): Promise<CompetitionOption[]> {
   return db
-    .select({ code: competitions.code, name: competitions.name, emblemUrl: competitions.emblemUrl })
+    .select({ code: competitions.code, name: competitions.name, emblemUrl: competitions.emblemUrl, sport: competitions.sport })
     .from(competitions)
-    .where(sql`${competitions.lastSyncedAt} is not null and ${competitions.syncError} is null`)
+    .where(
+      and(
+        sql`${competitions.lastSyncedAt} is not null and ${competitions.syncError} is null`,
+        sport ? eq(competitions.sport, sport) : undefined,
+      ),
+    )
     .orderBy(asc(competitions.name));
 }
 
 /** Times para o preenchimento manual: importados (aprovados) + os criados pelo próprio usuário. */
-export async function searchTeams(term: string, userId: string | null, limit = 10): Promise<TeamRef[]> {
+export async function searchTeams(term: string, userId: string | null, limit = 10, sport?: Sport | null): Promise<TeamRef[]> {
   const q = term.trim();
   if (q.length < 2) return [];
   const rows = await db
@@ -133,6 +144,7 @@ export async function searchTeams(term: string, userId: string | null, limit = 1
       and(
         or(likeUnaccent(sql`${teams.name}`, q), likeUnaccent(sql`coalesce(${teams.shortName}, '')`, q)),
         or(eq(teams.status, "approved"), userId ? eq(teams.createdBy, userId) : undefined),
+        sport ? eq(teams.sport, sport) : undefined,
       ),
     )
     .orderBy(sql`${teams.provider} is null`, asc(teams.name))
@@ -152,6 +164,7 @@ export async function upcomingByStadium(
   const rows = await db
     .select({
       id: matches.id,
+      sport: matches.sport,
       utcDate: matches.utcDate,
       stadiumId: matches.stadiumId,
       competition: { code: competitions.code, name: competitions.name },
@@ -181,7 +194,7 @@ export async function upcomingByStadium(
   return new Map(
     [...groups].map(([stadiumId, list]) => [
       stadiumId,
-      list.map((r) => ({ id: r.id, utcDate: r.utcDate, competition: r.competition, home: team(r.home), away: team(r.away) })),
+      list.map((r) => ({ id: r.id, sport: r.sport, utcDate: r.utcDate, competition: r.competition, home: team(r.home), away: team(r.away) })),
     ]),
   );
 }

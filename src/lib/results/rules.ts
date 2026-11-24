@@ -3,13 +3,16 @@
  * Usadas por src/lib/results/resolve.ts, src/lib/visits.ts e pelas telas (via VisitSummary).
  */
 
+import { DEFAULT_SPORT, SPORT_INFO, type Sport } from "../../../shared/sports";
+
 export type Score = { home: number; away: number };
-export type ResultProvider = "football-data" | "api-football";
+/** api-basketball/api-volleyball: API-Sports (status já normalizado para o vocabulário do football-data). */
+export type ResultProvider = "football-data" | "api-football" | "api-basketball" | "api-volleyball";
 export type ResultSource = ResultProvider | "manual";
 export type PredictionOutcome = "exact" | "winner" | "miss";
 
-/** Duração prevista do jogo (90 min + intervalo + acréscimos, com folga): depois disso começa a busca. */
-export const MATCH_DURATION_MS = 2 * 60 * 60 * 1000;
+/** Duração prevista do jogo de futebol (90 min + intervalo + acréscimos, com folga): depois disso começa a busca. */
+export const MATCH_DURATION_MS = SPORT_INFO.futebol.durationMs;
 
 /** Intervalo mínimo entre duas buscas do mesmo carimbo. */
 export const RECHECK_MS = 20 * 60 * 1000;
@@ -17,22 +20,22 @@ export const RECHECK_MS = 20 * 60 * 1000;
 /** Depois disso sem resultado, a busca para e a tela pede para informar à mão. */
 export const GIVE_UP_MS = 3 * 24 * 60 * 60 * 1000;
 
-export function expectedEndAt(kickoffAt: Date) {
-  return new Date(kickoffAt.getTime() + MATCH_DURATION_MS);
+export function expectedEndAt(kickoffAt: Date, sport: Sport = DEFAULT_SPORT) {
+  return new Date(kickoffAt.getTime() + SPORT_INFO[sport].durationMs);
 }
 
 /** Já passou do fim previsto, ainda dentro do prazo de busca, e a última tentativa não é recente. */
-export function isDueForCheck(v: { kickoffAt: Date | null; resultCheckedAt: Date | null }, now = new Date()) {
+export function isDueForCheck(v: { kickoffAt: Date | null; resultCheckedAt: Date | null; sport?: Sport }, now = new Date()) {
   if (!v.kickoffAt) return false;
-  const end = expectedEndAt(v.kickoffAt).getTime();
+  const end = expectedEndAt(v.kickoffAt, v.sport).getTime();
   if (now.getTime() < end || now.getTime() > end + GIVE_UP_MS) return false;
   return !v.resultCheckedAt || now.getTime() - v.resultCheckedAt.getTime() >= RECHECK_MS;
 }
 
 /** Pendente há tanto tempo que a busca automática desistiu: o usuário informa o resultado. */
-export function needsManualResult(kickoffAt: Date | null, now = new Date()) {
+export function needsManualResult(kickoffAt: Date | null, now = new Date(), sport: Sport = DEFAULT_SPORT) {
   if (!kickoffAt) return true;
-  return now.getTime() > expectedEndAt(kickoffAt).getTime() + GIVE_UP_MS;
+  return now.getTime() > expectedEndAt(kickoffAt, sport).getTime() + GIVE_UP_MS;
 }
 
 /** "Na mosca" (placar exato), acertou o vencedor/empate, ou errou. Null sem palpite ou sem resultado. */
@@ -52,10 +55,14 @@ const FINAL: Record<ResultProvider, readonly string[]> = {
   "football-data": ["FINISHED", "AWARDED"],
   // FT: tempo normal; AET: prorrogação; PEN: pênaltis; AWD/WO: decisão administrativa
   "api-football": ["FT", "AET", "PEN", "AWD", "WO"],
+  "api-basketball": ["FINISHED", "AWARDED"],
+  "api-volleyball": ["FINISHED", "AWARDED"],
 };
 const CALLED_OFF: Record<ResultProvider, readonly string[]> = {
   "football-data": ["POSTPONED", "CANCELLED", "SUSPENDED"],
   "api-football": ["PST", "CANC", "ABD", "SUSP"],
+  "api-basketball": ["POSTPONED", "CANCELLED", "SUSPENDED"],
+  "api-volleyball": ["POSTPONED", "CANCELLED", "SUSPENDED"],
 };
 
 export function isFinalStatus(provider: ResultProvider, status: string) {

@@ -57,6 +57,13 @@
       "when": 1795529111046,
       "tag": "0007_palpite_e_resultado",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795553085243,
+      "tag": "0008_esportes",
+      "breakpoints": true
     }
   ]
 }

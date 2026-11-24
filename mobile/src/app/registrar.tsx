@@ -122,6 +122,8 @@ export default function RegistrarScreen() {
           capacity: s.capacity,
           capacityNeedsReview: s.capacityNeedsReview,
           thumbUrl: s.thumbUrl,
+          sports: s.sports,
+          venueType: s.venueType,
           upcoming: s.upcoming,
         }),
       () => {},

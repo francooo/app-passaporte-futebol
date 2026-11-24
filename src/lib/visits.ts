@@ -4,6 +4,7 @@ import { alias } from "drizzle-orm/pg-core";
 import sharp from "sharp";
 import type { FanStats, MeProfile, TeamRef, VisitDetail, VisitList, VisitPhoto, VisitResultState, VisitSummary } from "@shared/api-types";
 import { PHOTO_LIMITS, type predictionSchema, type resultSchema, type visitSchema } from "@shared/schemas";
+import { predictionError, scoreError, SPORTS, type Sport } from "@shared/sports";
 import type { z } from "zod";
 import { db } from "@/db";
 import { moderationLog, stadiums, teams, users, visitPhotos, visits } from "@/db/schema";
@@ -13,7 +14,7 @@ import { USER_AGENT } from "@/lib/catalog/wikidata";
 import { apiFootballEnabled } from "@/lib/matches/api-football";
 import { getMatch } from "@/lib/matches/queries";
 import { resolvePendingResultsQuickly } from "@/lib/results/resolve";
-import { expectedEndAt, isFinalStatus, needsManualResult, predictionOutcome, toScore } from "@/lib/results/rules";
+import { expectedEndAt, isFinalStatus, needsManualResult, predictionOutcome, toScore, type ResultProvider } from "@/lib/results/rules";
 import { computeStats, type StatVisit } from "@/lib/stats";
 
 /**
@@ -47,6 +48,7 @@ const dateString = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null)
 const summaryColumns = {
   id: visits.id,
   kind: visits.kind,
+  sport: visits.sport,
   date: visits.date,
   homeScore: visits.homeScore,
   awayScore: visits.awayScore,
@@ -90,13 +92,13 @@ type Row = Awaited<ReturnType<typeof baseQuery>>[number];
 function resultState(r: Row): VisitResultState | null {
   if (r.kind !== "match") return null;
   const pending = r.resultStatus === "pending";
-  // Busca automática: partida importada, ou manual com a API-Football ligada
-  const automatic = Boolean(r.matchId || r.externalFixtureId || apiFootballEnabled());
+  // Busca automática: partida importada, ou futebol manual com a API-Football ligada
+  const automatic = Boolean(r.matchId || r.externalFixtureId || (r.sport === "futebol" && apiFootballEnabled()));
   return {
     status: pending ? "pending" : "final",
     source: (r.resultSource as VisitResultState["source"]) ?? null,
-    expectedEndAt: r.kickoffAt ? expectedEndAt(r.kickoffAt).toISOString() : null,
-    needsManual: pending && (!automatic || needsManualResult(r.kickoffAt)),
+    expectedEndAt: r.kickoffAt ? expectedEndAt(r.kickoffAt, r.sport).toISOString() : null,
+    needsManual: pending && (!automatic || needsManualResult(r.kickoffAt, undefined, r.sport)),
   };
 }
 
@@ -105,6 +107,7 @@ function toSummary(r: Row): VisitSummary {
   return {
     id: r.id,
     kind: r.kind,
+    sport: r.sport,
     date: dateString(r.date),
     stadium: {
       id: r.stadium.id,
@@ -127,7 +130,7 @@ function toSummary(r: Row): VisitSummary {
 
 // ── Leitura ──────────────────────────────────────────────────────────────────
 
-export type VisitFilters = { kind?: "visit" | "match" | null; year?: number | null; competition?: string | null };
+export type VisitFilters = { kind?: "visit" | "match" | null; year?: number | null; competition?: string | null; sport?: Sport | null };
 
 export async function listVisits(userId: string, filters: VisitFilters = {}): Promise<VisitList> {
   // Jogos que já terminaram: busca o resultado antes de mostrar (com tempo limitado)
@@ -137,9 +140,10 @@ export async function listVisits(userId: string, filters: VisitFilters = {}): Pr
     filters.kind ? eq(visits.kind, filters.kind) : undefined,
     filters.year ? sql`extract(year from ${visits.date}) = ${filters.year}` : undefined,
     filters.competition ? eq(visits.competition, filters.competition) : undefined,
+    filters.sport ? eq(visits.sport, filters.sport) : undefined,
   );
 
-  const [rows, [totals], years, comps] = await Promise.all([
+  const [rows, [totals], years, comps, sports] = await Promise.all([
     baseQuery().where(where).orderBy(sql`${visits.date} desc nulls last`, desc(visits.createdAt)),
     db
       .select({ stamps: count(), stadiums: sql<number>`count(distinct ${visits.stadiumId})::int` })
@@ -152,7 +156,9 @@ export async function listVisits(userId: string, filters: VisitFilters = {}): Pr
     db
       .selectDistinct({ name: visits.competition })
       .from(visits)
-      .where(and(eq(visits.userId, userId), sql`${visits.competition} is not null`)),
+      // Competições do esporte escolhido (o filtro de competição segue o de esporte)
+      .where(and(eq(visits.userId, userId), sql`${visits.competition} is not null`, filters.sport ? eq(visits.sport, filters.sport) : undefined)),
+    db.selectDistinct({ sport: visits.sport }).from(visits).where(eq(visits.userId, userId)),
   ]);
 
   return {
@@ -160,6 +166,7 @@ export async function listVisits(userId: string, filters: VisitFilters = {}): Pr
     totals: { stamps: totals.stamps, stadiums: totals.stadiums },
     years: years.map((y) => y.year).sort((a, b) => b - a),
     competitions: comps.map((c) => c.name!).sort((a, b) => a.localeCompare(b, "pt-BR")),
+    sports: SPORTS.filter((sport) => sports.some((r) => r.sport === sport)),
   };
 }
 
@@ -185,7 +192,7 @@ export async function getVisit(userId: string, id: string): Promise<VisitDetail 
 // ── Escrita ──────────────────────────────────────────────────────────────────
 
 /** Time existente (importado/aprovado ou criado pelo usuário) pelo nome, ou cria um "pending" para moderação. */
-async function findOrCreateTeam(name: string, userId: string, country: string) {
+async function findOrCreateTeam(name: string, userId: string, country: string, sport: Sport) {
   const [existing] = await db
     .select({ id: teams.id })
     .from(teams)
@@ -196,6 +203,8 @@ async function findOrCreateTeam(name: string, userId: string, country: string) {
           sql`lower(unaccent(coalesce(${teams.shortName}, ''))) = lower(unaccent(${name}))`,
         ),
         or(eq(teams.status, "approved"), eq(teams.createdBy, userId)),
+        // "Minas" do vôlei e "Minas" do basquete são times diferentes
+        eq(teams.sport, sport),
       ),
     )
     .orderBy(sql`${teams.provider} is null`)
@@ -204,22 +213,22 @@ async function findOrCreateTeam(name: string, userId: string, country: string) {
 
   const [created] = await db
     .insert(teams)
-    .values({ name, country, kind: "club", status: "pending", createdBy: userId })
+    .values({ name, country, sport, kind: "club", status: "pending", createdBy: userId })
     .returning({ id: teams.id });
-  await db.insert(moderationLog).values({ kind: "team", targetId: created.id, action: "created", actorId: userId, data: { name, country } });
+  await db.insert(moderationLog).values({ kind: "team", targetId: created.id, action: "created", actorId: userId, data: { name, country, sport } });
   return created.id;
 }
 
-async function resolveTeam(id: string | null | undefined, name: string | null | undefined, userId: string, country: string) {
+async function resolveTeam(id: string | null | undefined, name: string | null | undefined, userId: string, country: string, sport: Sport) {
   if (id) {
     const [team] = await db
       .select({ id: teams.id })
       .from(teams)
-      .where(and(eq(teams.id, id), or(eq(teams.status, "approved"), eq(teams.createdBy, userId))))
+      .where(and(eq(teams.id, id), eq(teams.sport, sport), or(eq(teams.status, "approved"), eq(teams.createdBy, userId))))
       .limit(1);
     if (team) return team.id;
   }
-  return name ? findOrCreateTeam(name, userId, country) : null;
+  return name ? findOrCreateTeam(name, userId, country, sport) : null;
 }
 
 /** Converte o formulário validado nas colunas do registro (resolve partida, times e estádio). */
@@ -227,13 +236,15 @@ async function toColumns(userId: string, input: VisitData) {
   const [stadium] = await db
     .select({ id: stadiums.id, country: stadiums.country })
     .from(stadiums)
-    .where(and(eq(stadiums.id, input.stadiumId), eq(stadiums.status, "approved")))
+    // Aprovado, ou cadastrado pelo próprio usuário (em moderação)
+    .where(and(eq(stadiums.id, input.stadiumId), or(eq(stadiums.status, "approved"), and(eq(stadiums.status, "pending"), eq(stadiums.createdBy, userId)))))
     .limit(1);
-  if (!stadium) throw new VisitError(400, "Estádio não encontrado.", "stadiumId");
+  if (!stadium) throw new VisitError(400, "Local não encontrado.", "stadiumId");
 
   const base = {
     stadiumId: stadium.id,
     kind: input.kind,
+    sport: input.sport,
     note: input.note ?? null,
     date: input.date ? new Date(`${input.date}T00:00:00Z`) : null,
   };
@@ -257,10 +268,13 @@ async function toColumns(userId: string, input: VisitData) {
   if (input.matchId) {
     const match = await getMatch(input.matchId);
     if (!match) throw new VisitError(400, "Partida não encontrada.", "matchId");
-    const finished = isFinalStatus("football-data", match.status) && match.homeScore != null && match.awayScore != null;
+    const provider = match.provider as ResultProvider;
+    const finished = isFinalStatus(provider, match.status) && match.homeScore != null && match.awayScore != null;
     return {
       ...base,
       ...noResult,
+      // O esporte vem da partida importada
+      sport: match.sport,
       // Sem data informada, vale a data da partida
       date: base.date ?? dayOf(match.utcDate),
       matchId: match.id,
@@ -270,13 +284,13 @@ async function toColumns(userId: string, input: VisitData) {
       kickoffAt: match.utcDate,
       // Já encerrada: placar oficial. Ainda não: palpite e resultado depois do jogo.
       ...(finished
-        ? { homeScore: match.homeScore, awayScore: match.awayScore, resultStatus: "final", resultSource: "football-data" }
+        ? { homeScore: match.homeScore, awayScore: match.awayScore, resultStatus: "final", resultSource: provider }
         : { ...prediction, resultStatus: "pending" }),
     };
   }
 
-  const homeTeamId = await resolveTeam(input.homeTeamId, input.homeTeamName, userId, stadium.country);
-  const awayTeamId = await resolveTeam(input.awayTeamId, input.awayTeamName, userId, stadium.country);
+  const homeTeamId = await resolveTeam(input.homeTeamId, input.homeTeamName, userId, stadium.country, input.sport);
+  const awayTeamId = await resolveTeam(input.awayTeamId, input.awayTeamName, userId, stadium.country, input.sport);
   if (homeTeamId && homeTeamId === awayTeamId) throw new VisitError(400, "Mandante e visitante precisam ser diferentes.", "awayTeamName");
   const common = { ...base, ...noResult, matchId: null, homeTeamId, awayTeamId, competition: input.competition ?? null };
   if (input.resultPending) {
@@ -312,6 +326,9 @@ export async function updateVisit(userId: string, id: string, input: VisitData) 
 
 /** Resultado informado à mão: vale sobre a busca automática (que não troca mais). */
 export async function setResult(userId: string, id: string, input: z.output<typeof resultSchema>) {
+  const sport = await visitSport(userId, id);
+  const error = scoreError(sport, input.homeScore, input.awayScore);
+  if (error) throw new VisitError(400, error, "homeScore");
   const [row] = await db
     .update(visits)
     .set({ homeScore: input.homeScore, awayScore: input.awayScore, resultStatus: "final", resultSource: "manual" })
@@ -320,15 +337,28 @@ export async function setResult(userId: string, id: string, input: z.output<type
   if (!row) throw new VisitError(404, "Registro não encontrado.");
 }
 
+/** Esporte do carimbo de partida (404 se não for do usuário). */
+async function visitSport(userId: string, id: string): Promise<Sport> {
+  const [row] = await db
+    .select({ sport: visits.sport })
+    .from(visits)
+    .where(and(eq(visits.id, id), eq(visits.userId, userId), eq(visits.kind, "match")))
+    .limit(1);
+  if (!row) throw new VisitError(404, "Registro não encontrado.");
+  return row.sport;
+}
+
 /** Palpite: só enquanto o resultado não sai. */
 export async function setPrediction(userId: string, id: string, input: z.output<typeof predictionSchema>) {
   const [current] = await db
-    .select({ status: visits.resultStatus })
+    .select({ status: visits.resultStatus, sport: visits.sport })
     .from(visits)
     .where(and(eq(visits.id, id), eq(visits.userId, userId), eq(visits.kind, "match")))
     .limit(1);
   if (!current) throw new VisitError(404, "Registro não encontrado.");
   if (current.status !== "pending") throw new VisitError(400, "O resultado já saiu: o palpite não pode mais mudar.");
+  const error = predictionError(current.sport, input.predictedHomeScore, input.predictedAwayScore);
+  if (error) throw new VisitError(400, error, "predictedHomeScore");
   await db
     .update(visits)
     .set({ predictedHomeScore: input.predictedHomeScore, predictedAwayScore: input.predictedAwayScore })
@@ -422,6 +452,7 @@ export async function statsForUser(userId: string, teamId?: string | null): Prom
   const rows = await baseQuery().where(eq(visits.userId, userId));
   const statVisits: StatVisit[] = rows.map((r) => ({
     kind: r.kind,
+    sport: r.sport,
     date: dateString(r.date),
     stadium: {
       id: r.stadium.id,

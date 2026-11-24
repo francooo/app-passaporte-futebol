@@ -32,6 +32,8 @@ async function Registrar({ searchParams }: Pick<PageProps<"/app/registrar">, "se
               capacity: stadium.capacity,
               capacityNeedsReview: stadium.capacityNeedsReview,
               thumbUrl: stadium.thumbUrl,
+              sports: stadium.sports,
+              venueType: stadium.venueType,
               upcoming: await nextMatchAt(stadium.id),
             }
           : null

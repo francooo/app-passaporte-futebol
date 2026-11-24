@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_SPORT, predictionError, scoreError, SPORTS } from "./sports";
 
 /** Validações de conta — usadas pelas Server Actions do web, pela API mobile e pelo app. */
 
@@ -62,7 +63,8 @@ const score = z.coerce
   .number({ message: "Informe o placar." })
   .int("Placar inválido.")
   .min(0, "Placar inválido.")
-  .max(99, "Placar inválido.");
+  // Teto geral (basquete); o limite de cada esporte vem de scoreError (shared/sports.ts)
+  .max(250, "Placar inválido.");
 
 /**
  * Registro de visita ou partida. Partida: vem de "Encontre a partida" (matchId)
@@ -73,7 +75,8 @@ const score = z.coerce
 export const visitSchema = z
   .object({
     kind: z.enum(["visit", "match"], { message: "Escolha Visita ou Partida." }),
-    stadiumId: z.string().min(1, "Escolha o estádio."),
+    sport: z.enum(SPORTS, { message: "Escolha o esporte." }).default(DEFAULT_SPORT),
+    stadiumId: z.string().min(1, "Escolha o local."),
     date: z.iso.date({ message: "Data inválida." }).nullish(),
     matchId: z.string().min(1).nullish(),
     homeTeamId: z.string().min(1).nullish(),
@@ -101,10 +104,18 @@ export const visitSchema = z
     if (!v.resultPending && (v.homeScore == null || v.awayScore == null)) {
       ctx.addIssue({ code: "custom", path: ["homeScore"], message: "Informe o placar." });
     }
+    if (!v.resultPending && v.homeScore != null && v.awayScore != null) {
+      const error = scoreError(v.sport, v.homeScore, v.awayScore);
+      if (error) ctx.addIssue({ code: "custom", path: ["homeScore"], message: error });
+    }
   })
   .superRefine((v, ctx) => {
     if ((v.predictedHomeScore == null) !== (v.predictedAwayScore == null)) {
       ctx.addIssue({ code: "custom", path: ["predictedHomeScore"], message: "Informe os dois lados do palpite." });
+    }
+    if (v.kind === "match" && v.predictedHomeScore != null && v.predictedAwayScore != null) {
+      const error = predictionError(v.sport, v.predictedHomeScore, v.predictedAwayScore);
+      if (error) ctx.addIssue({ code: "custom", path: ["predictedHomeScore"], message: error });
     }
   });
 

@@ -1,6 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, gt, or, sql } from "drizzle-orm";
 import type { CatalogCountry, NearbyStadium, StadiumDetail, StadiumPage, StadiumSummary } from "@shared/api-types";
+import type { Sport, VenueType } from "@shared/sports";
 import { db } from "@/db";
 import { countries, stadiums } from "@/db/schema";
 import { fillAddress } from "./address";
@@ -28,6 +29,8 @@ const summaryColumns = {
   capacityOverride: stadiums.capacityOverride,
   capacityNeedsReview: stadiums.capacityNeedsReview,
   photoUrl: stadiums.photoUrl,
+  sports: stadiums.sports,
+  venueType: stadiums.venueType,
 };
 
 type SummaryRow = {
@@ -40,6 +43,8 @@ type SummaryRow = {
   capacityOverride: number | null;
   capacityNeedsReview: boolean;
   photoUrl: string | null;
+  sports: Sport[];
+  venueType: VenueType;
 };
 
 function toSummary(r: SummaryRow): StadiumSummary {
@@ -53,8 +58,14 @@ function toSummary(r: SummaryRow): StadiumSummary {
     // Corrigida pela moderação → deixa de estar "a confirmar"
     capacityNeedsReview: r.capacityNeedsReview && r.capacityOverride == null,
     thumbUrl: commonsThumb(r.photoUrl, 330),
+    sports: r.sports,
+    venueType: r.venueType,
   };
 }
+
+/** Locais onde o esporte é jogado (sem esporte = todos). */
+export const playsSport = (sport: Sport | null | undefined) =>
+  sport ? sql`${stadiums.sports} @> array[${sport}]::sport[]` : undefined;
 
 /** Próximo jogo (30 dias) de um estádio: registro aberto a partir da página do estádio (preenche a partida). */
 export async function nextMatchAt(stadiumId: string) {
@@ -98,11 +109,13 @@ export async function getCountry(iso3: string) {
 export async function listStadiums({
   country,
   q,
+  sport,
   page = 0,
   pageSize = PAGE_SIZE,
 }: {
   country: string;
   q?: string | null;
+  sport?: Sport | null;
   page?: number;
   pageSize?: number;
 }): Promise<StadiumPage> {
@@ -111,6 +124,7 @@ export async function listStadiums({
     visible,
     eq(stadiums.country, country),
     term ? nameOrCity(term) : undefined,
+    playsSport(sport),
   );
 
   const [rows, [{ total }]] = await Promise.all([
@@ -192,13 +206,13 @@ export async function listPhotoCredits({ page = 0, pageSize = 100 } = {}) {
 }
 
 /** Busca global (todos os países) para escolher o estádio do registro. */
-export async function searchStadiums(q: string, limit = 20): Promise<StadiumSummary[]> {
+export async function searchStadiums(q: string, limit = 20, sport?: Sport | null): Promise<StadiumSummary[]> {
   const term = q.trim();
   if (term.length < 2) return [];
   const rows = await db
     .select(summaryColumns)
     .from(stadiums)
-    .where(and(visible, nameOrCity(term)))
+    .where(and(visible, nameOrCity(term), playsSport(sport)))
     .orderBy(sql`${capacityExpr} desc nulls last`, asc(stadiums.name))
     .limit(limit);
   return withNextMatch(rows.map(toSummary));
@@ -208,7 +222,7 @@ export async function searchStadiums(q: string, limit = 20): Promise<StadiumSumm
  * Estádios num raio (km) a partir de uma coordenada, do mais perto para o mais longe.
  * A coordenada do usuário só é usada nesta consulta (não é gravada).
  */
-export async function nearbyStadiums(lat: number, lng: number, radiusKm = 100, limit = 20): Promise<NearbyStadium[]> {
+export async function nearbyStadiums(lat: number, lng: number, radiusKm = 100, limit = 20, sport?: Sport | null): Promise<NearbyStadium[]> {
   const dLat = radiusKm / 111;
   const dLng = radiusKm / (111 * Math.max(Math.cos((lat * Math.PI) / 180), 0.01));
   const distance = sql<number>`6371 * 2 * asin(sqrt(
@@ -225,6 +239,7 @@ export async function nearbyStadiums(lat: number, lng: number, radiusKm = 100, l
         sql`${stadiums.lat} between ${lat - dLat} and ${lat + dLat}`,
         sql`${stadiums.lng} between ${lng - dLng} and ${lng + dLng}`,
         sql`${distance} <= ${radiusKm}`,
+        playsSport(sport),
       ),
     )
     .orderBy(distance)

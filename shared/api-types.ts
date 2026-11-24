@@ -1,4 +1,7 @@
 import type { FieldErrors } from "./schemas";
+import type { Sport, VenueType } from "./sports";
+
+export type { Sport, VenueType } from "./sports";
 
 /** Contrato da API mobile (src/app/api/mobile/*). */
 
@@ -35,6 +38,11 @@ export type StadiumSummary = {
   capacityNeedsReview: boolean;
   /** Miniatura de 330 px (largura padrão do Wikimedia Commons). */
   thumbUrl: string | null;
+  /** Esportes jogados no local e tipo (estádio, arena, ginásio). */
+  sports: Sport[];
+  venueType: VenueType;
+  /** Local cadastrado por usuário, ainda em moderação (só o autor vê). */
+  pending?: boolean;
   /**
    * Partidas agendadas no estádio (estádio do mandante), por data. Busca e lista do país: o próximo jogo
    * em 30 dias; estádios perto: até 3 em 14 dias. Ausente nas demais rotas.
@@ -76,6 +84,7 @@ export type VisitPhoto = { id: string; thumbUrl: string; url: string };
 export type VisitSummary = {
   id: string;
   kind: "visit" | "match";
+  sport: Sport;
   /** "AAAA-MM-DD" ou null (registro sem data). */
   date: string | null;
   stadium: { id: string; name: string; city: string | null; state: string | null; country: string; thumbUrl: string | null };
@@ -95,7 +104,7 @@ export type VisitSummary = {
 
 export type VisitResultState = {
   status: "pending" | "final";
-  source: "football-data" | "api-football" | "manual" | null;
+  source: "football-data" | "api-football" | "api-basketball" | "api-volleyball" | "manual" | null;
   /** Início + 2 h (ISO); antes disso a tela mostra "resultado por volta de…". */
   expectedEndAt: string | null;
   /** Pendente e sem busca automática possível (ou ela desistiu): pedir o resultado à mão. */
@@ -115,10 +124,13 @@ export type VisitList = {
   /** Anos e competições com registros, para montar os filtros. */
   years: number[];
   competitions: string[];
+  /** Esportes com registros (o filtro de esporte só aparece com mais de um). */
+  sports: Sport[];
 };
 
 export type MatchResult = {
   id: string;
+  sport: Sport;
   competition: { code: string; name: string };
   /** ISO (UTC). */
   utcDate: string;
@@ -131,11 +143,12 @@ export type MatchResult = {
   status?: string;
 };
 
-export type CompetitionOption = { code: string; name: string; emblemUrl: string | null };
+export type CompetitionOption = { code: string; name: string; emblemUrl: string | null; sport: Sport };
 
 /** Partida agendada (ainda não jogada) num estádio do catálogo. */
 export type UpcomingMatch = {
   id: string;
+  sport: Sport;
   /** ISO (UTC); o cliente formata no fuso do aparelho. */
   utcDate: string;
   competition: { code: string; name: string };
@@ -156,6 +169,8 @@ export type FanStats = {
   km: number | null;
   homeCity: string | null;
   byYear: Array<{ year: number; count: number }>;
+  /** Partidas por esporte (só os esportes com partidas), da maior para a menor. */
+  bySport: Array<{ sport: Sport; matches: number }>;
   team: {
     team: TeamRef;
     wins: number;
