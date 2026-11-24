@@ -40,7 +40,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "O Passaporte Esportivo usa sua localização para encontrar os estádios perto de você."
+          "locationWhenInUsePermission": "O Passaporte Esportivo usa sua localização para encontrar os estádios e ginásios perto de você."
         }
       ],
       [

@@ -32,7 +32,7 @@ export default function HomeScreen() {
         <Text style={[type.titulo, styles.greeting]} accessibilityRole="header">
           Olá{firstName ? `, ${firstName}` : ""}!
         </Text>
-        <Text style={[type.rotulo, styles.motto]}>Explorar{"\n"}Colecionar{"\n"}Viver o futebol</Text>
+        <Text style={[type.rotulo, styles.motto]}>Explorar{"\n"}Colecionar{"\n"}Viver o esporte</Text>
       </View>
 
       <StadiumSearch />
@@ -66,7 +66,11 @@ export default function HomeScreen() {
         </View>
         <View style={styles.counters}>
           <Counter value={data?.totals.stamps ?? 0} one="carimbo" many="carimbos" divider />
-          <Counter value={data?.totals.stadiums ?? 0} one="estádio" many="estádios" />
+          <Counter
+            value={data?.totals.stadiums ?? 0}
+            one={data?.sports.some((s) => s !== "futebol") ? "local" : "estádio"}
+            many={data?.sports.some((s) => s !== "futebol") ? "locais" : "estádios"}
+          />
         </View>
       </Pressable>
 
@@ -96,7 +100,7 @@ export default function HomeScreen() {
         ) : latest.length ? (
           latest.map((v) => <VisitStamp key={v.id} visit={v} onPress={() => router.push({ pathname: "/carimbo/[id]", params: { id: v.id } })} />)
         ) : (
-          <EmptyState icon="stamp-visita" title="Seu passaporte está em branco" text="Registre a primeira visita a um estádio ou uma partida que você viu ao vivo." />
+          <EmptyState icon="stamp-visita" title="Seu passaporte está em branco" text="Registre a primeira visita a um estádio ou ginásio, ou uma partida que você viu ao vivo." />
         )}
       </View>
 

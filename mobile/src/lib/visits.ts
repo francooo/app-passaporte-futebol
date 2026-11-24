@@ -11,7 +11,8 @@ import type {
   VisitList,
   VisitPhoto,
 } from "@shared/api-types";
-import { PHOTO_LIMITS, type PredictionInput, type ProfileInput, type ResultInput, type VisitInput } from "@shared/schemas";
+import { PHOTO_LIMITS, type PredictionInput, type ProfileInput, type ResultInput, type VenueInput, type VisitInput } from "@shared/schemas";
+import type { Sport } from "@shared/sports";
 import { api, API_URL, ApiRequestError } from "./api";
 
 /**
@@ -21,7 +22,7 @@ import { api, API_URL, ApiRequestError } from "./api";
 export function visitsApi(token: string | null) {
   const get = <T,>(path: string, signal?: AbortSignal) => api<T>(path, { token, signal });
   return {
-    list: (filters: { tipo?: string; ano?: string; competicao?: string } = {}) =>
+    list: (filters: { tipo?: string; ano?: string; competicao?: string; esporte?: string } = {}) =>
       get<VisitList>(`/api/visits?${new URLSearchParams(Object.entries(filters).filter(([, v]) => v) as [string, string][])}`),
     get: (id: string) => get<VisitDetail>(`/api/visits/${encodeURIComponent(id)}`),
     create: (input: VisitInput) => api<VisitDetail>("/api/visits", { method: "POST", body: input, token }),
@@ -51,13 +52,17 @@ export function visitsApi(token: string | null) {
     stats: (teamId?: string | null) => get<FanStats>(`/api/stats${teamId ? `?time=${encodeURIComponent(teamId)}` : ""}`),
     profile: () => get<MeProfile>("/api/me"),
     updateProfile: (input: ProfileInput) => api<MeProfile>("/api/me", { method: "PATCH", body: input, token }),
-    searchMatches: (params: { q?: string; competicao?: string; data?: string; estadio?: string }, signal?: AbortSignal) =>
+    searchMatches: (params: { q?: string; competicao?: string; data?: string; estadio?: string; esporte?: string }, signal?: AbortSignal) =>
       get<MatchResult[]>(`/api/matches/search?${new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][])}`, signal),
-    searchTeams: (q: string, signal?: AbortSignal) => get<TeamRef[]>(`/api/teams/search?q=${encodeURIComponent(q)}`, signal),
-    competitions: () => get<CompetitionOption[]>("/api/competitions"),
-    searchStadiums: (q: string) => get<StadiumSummary[]>(`/api/catalog/stadiums/search?q=${encodeURIComponent(q)}`),
-    nearbyStadiums: (lat: number, lng: number, radiusKm = 50) =>
-      get<NearbyStadium[]>(`/api/catalog/stadiums/nearby?lat=${lat}&lng=${lng}&raio=${radiusKm}`),
+    searchTeams: (q: string, signal?: AbortSignal, sport?: Sport) =>
+      get<TeamRef[]>(`/api/teams/search?q=${encodeURIComponent(q)}${sport ? `&esporte=${sport}` : ""}`, signal),
+    competitions: (sport?: Sport) => get<CompetitionOption[]>(`/api/competitions${sport ? `?esporte=${sport}` : ""}`),
+    searchStadiums: (q: string, sport?: Sport) =>
+      get<StadiumSummary[]>(`/api/catalog/stadiums/search?q=${encodeURIComponent(q)}${sport ? `&esporte=${sport}` : ""}`),
+    nearbyStadiums: (lat: number, lng: number, radiusKm = 50, sport?: Sport) =>
+      get<NearbyStadium[]>(`/api/catalog/stadiums/nearby?lat=${lat}&lng=${lng}&raio=${radiusKm}${sport ? `&esporte=${sport}` : ""}`),
+    /** Local que falta no catálogo (entra em análise; só o autor vê até aprovar). */
+    createVenue: (input: VenueInput) => api<StadiumSummary>("/api/catalog/stadiums", { method: "POST", body: input, token }),
   };
 }
 

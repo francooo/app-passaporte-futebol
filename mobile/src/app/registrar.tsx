@@ -6,6 +6,8 @@ import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, Text
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { CompetitionOption, MatchResult, NearbyStadium, StadiumSummary, UpcomingMatch, VisitDetail } from "@shared/api-types";
 import { PHOTO_LIMITS, type VisitInput } from "@shared/schemas";
+import { hasMatchSource, scoreDigits, scoreFieldLabel, SPORT_COPY, venueWord } from "@shared/sport-copy";
+import { predictionError, scoreError, SPORT_INFO, SPORTS, type Sport, type VenueType } from "@shared/sports";
 import { Button } from "@/components/button";
 import { KitIcon } from "@/components/kit-icon";
 import { place, StadiumThumb } from "@/components/stadium-bits";
@@ -42,7 +44,8 @@ type Guess = { home: string; away: string };
 
 const emptyTeam: ManualTeam = { id: null, name: "", crestUrl: null };
 const emptyGuess: Guess = { home: "", away: "" };
-const isGoals = (s: string) => /^\d{1,2}$/.test(s);
+/** Placar digitado (até 3 dígitos: basquete). */
+const isGoals = (s: string) => /^\d{1,3}$/.test(s);
 const guessFilled = (g: Guess) => isGoals(g.home) && isGoals(g.away);
 /** Partida escolhida que ainda não terminou (hoje/ao vivo): o placar vira palpite. */
 const isOpenMatch = (m: MatchResult | null) => Boolean(m?.status && m.status !== "FINISHED");
@@ -99,6 +102,7 @@ export default function RegistrarScreen() {
 
   const [step, setStep] = useState<Step>(1);
   const [kind, setKind] = useState<Kind>("match");
+  const [sport, setSport] = useState<Sport>("futebol");
   const [stadium, setStadium] = useState<StadiumSummary | null>(null);
   const [dateText, setDateText] = useState("");
   const [match, setMatch] = useState<MatchResult | null>(null);
@@ -112,7 +116,9 @@ export default function RegistrarScreen() {
   useEffect(() => {
     if (!estadio) return;
     catalogApi.stadium(estadio).then(
-      (s) =>
+      (s) => {
+        // Local vindo da página dele: começa no esporte do local (ginásio → vôlei)
+        if (!s.sports.includes("futebol")) setSport(s.sports[0]);
         setStadium({
           id: s.id,
           name: s.name,
@@ -125,7 +131,8 @@ export default function RegistrarScreen() {
           sports: s.sports,
           venueType: s.venueType,
           upcoming: s.upcoming,
-        }),
+        });
+      },
       () => {},
     );
   }, [estadio]);
@@ -145,10 +152,11 @@ export default function RegistrarScreen() {
   async function submit() {
     if (!stadium) return;
     setStatus({ busy: true, message: "Criando carimbo…", error: null });
-    const body: VisitInput = { kind, stadiumId: stadium.id, date: date ?? null, note: note.trim() || null };
+    const body: VisitInput = { kind, sport, stadiumId: stadium.id, date: date ?? null, note: note.trim() || null };
     if (kind === "match" && match) {
       body.matchId = match.id;
-      if (isOpenMatch(match) && guessFilled(guess)) {
+      // Palpite inválido para o esporte (ex.: 3×3 no vôlei) não vai: o aviso já aparece no campo
+      if (isOpenMatch(match) && guessFilled(guess) && !predictionError(match.sport, Number(guess.home), Number(guess.away))) {
         Object.assign(body, { predictedHomeScore: Number(guess.home), predictedAwayScore: Number(guess.away) });
       }
     }
@@ -210,6 +218,7 @@ export default function RegistrarScreen() {
     router.replace({ pathname: "/carimbo/[id]", params: { id: visit.id, ...(failed ? { fotos_falharam: String(failed), motivo: reason } : {}) } });
   }
 
+  const guessError = match && guessFilled(guess) ? predictionError(match.sport, Number(guess.home), Number(guess.away)) : null;
   const effectiveDate = date ?? (match ? match.utcDate.slice(0, 10) : manual?.fromMatch ? localDay(manual.fromMatch.utcDate) : null);
 
   return (
@@ -236,7 +245,19 @@ export default function RegistrarScreen() {
 
         {step === 1 && (
           <>
+            <SportPicker
+              value={sport}
+              onChange={(s) => {
+                setSport(s);
+                setMatch(null);
+                setManual(null);
+                setGuess(emptyGuess);
+                // Local que não recebe o esporte novo: escolhe de novo
+                if (stadium && !stadium.sports.includes(s)) setStadium(null);
+              }}
+            />
             <KindToggle
+              sport={sport}
               value={kind}
               onChange={(k) => {
                 setKind(k);
@@ -247,6 +268,8 @@ export default function RegistrarScreen() {
               }}
             />
             <StadiumPicker
+              key={sport}
+              sport={sport}
               stadium={stadium}
               onChange={(s) => {
                 setStadium(s);
@@ -267,13 +290,14 @@ export default function RegistrarScreen() {
             <Button disabled={!stadium || !!dateError} onPress={() => go(kind === "match" ? 2 : 3)} icon={<KitIcon name="arrow-right" size={22} />}>
               {kind === "match" ? "Continuar: partida" : "Continuar: fotos"}
             </Button>
-            {!stadium && <Text style={[type.suave, styles.center]}>Escolha o estádio para continuar.</Text>}
+            {!stadium && <Text style={[type.suave, styles.center]}>Escolha o {venueWord(sport)} para continuar.</Text>}
           </>
         )}
 
         {step === 2 && stadium && (
           <MatchStep
             stadium={stadium}
+            sport={sport}
             date={date}
             selected={match}
             manual={manual}
@@ -303,7 +327,7 @@ export default function RegistrarScreen() {
                 size={180}
               />
               <Text style={[type.rotulo, styles.badge, { backgroundColor: kind === "match" ? colors.partida : colors.visita }]}>
-                {kind === "match" ? "Partida" : "Visita"}
+                {kind === "match" ? `Partida · ${SPORT_INFO[sport].label}` : "Visita"}
               </Text>
               <Text style={styles.previewDate}>{effectiveDate ? formatDay(effectiveDate).toUpperCase() : "SEM DATA"}</Text>
             </Ticket>
@@ -325,10 +349,23 @@ export default function RegistrarScreen() {
                   <View style={styles.guessBox}>
                     <Text style={styles.label}>Seu palpite (opcional)</Text>
                     <View style={styles.scoreRow}>
-                      <ScoreInput label="Palpite: gols do mandante" value={guess.home} onChange={(home) => setGuess((g) => ({ ...g, home }))} invalid={false} />
+                      <ScoreInput
+                        label={`Palpite: ${scoreFieldLabel(match!.sport, "home").toLowerCase()}`}
+                        digits={scoreDigits(match!.sport)}
+                        value={guess.home}
+                        onChange={(home) => setGuess((g) => ({ ...g, home }))}
+                        invalid={guessError != null}
+                      />
                       <Text style={styles.times}>×</Text>
-                      <ScoreInput label="Palpite: gols do visitante" value={guess.away} onChange={(away) => setGuess((g) => ({ ...g, away }))} invalid={false} />
+                      <ScoreInput
+                        label={`Palpite: ${scoreFieldLabel(match!.sport, "away").toLowerCase()}`}
+                        digits={scoreDigits(match!.sport)}
+                        value={guess.away}
+                        onChange={(away) => setGuess((g) => ({ ...g, away }))}
+                        invalid={guessError != null}
+                      />
                     </View>
+                    {guessError && <Text style={styles.error}>{guessError} O palpite não será salvo assim.</Text>}
                     <Text style={[type.suave, styles.small, styles.center]}>
                       O jogo ainda não terminou: o resultado chega sozinho depois do fim e é comparado com o palpite.
                     </Text>
@@ -341,7 +378,7 @@ export default function RegistrarScreen() {
                   </Text>
                 )}
                 {match?.stadiumId && match.stadiumId !== stadium.id && (
-                  <Text style={styles.warn}>Pelo nosso catálogo, essa partida foi em outro estádio. Confira se é o jogo certo ou volte e troque.</Text>
+                  <Text style={styles.warn}>Pelo nosso catálogo, essa partida foi em outro local. Confira se é o jogo certo ou volte e troque.</Text>
                 )}
               </View>
             )}
@@ -382,10 +419,36 @@ function Stepper({ total, current }: { total: number; current: number }) {
   );
 }
 
-function KindToggle({ value, onChange }: { value: Kind; onChange: (k: Kind) => void }) {
-  const options: Array<{ value: Kind; label: string; icon: "stadium" | "football" }> = [
-    { value: "visit", label: "Visita", icon: "stadium" },
-    { value: "match", label: "Partida", icon: "football" },
+/** Escolha do esporte (chips com ícone) no topo do registro. */
+function SportPicker({ value, onChange }: { value: Sport; onChange: (s: Sport) => void }) {
+  return (
+    <View style={styles.gap}>
+      <Text style={styles.label}>Esporte</Text>
+      <View style={styles.sportGrid} accessibilityRole="radiogroup">
+        {SPORTS.map((s) => {
+          const active = value === s;
+          return (
+            <Pressable
+              key={s}
+              onPress={() => onChange(s)}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: active }}
+              style={[styles.sportItem, active && styles.toggleActive]}
+            >
+              <KitIcon name={SPORT_INFO[s].icon} size={24} />
+              <Text style={styles.sportText}>{SPORT_INFO[s].label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function KindToggle({ value, onChange, sport }: { value: Kind; onChange: (k: Kind) => void; sport: Sport }) {
+  const options: Array<{ value: Kind; label: string; icon: "stadium" | "arena" | (typeof SPORT_INFO)[Sport]["icon"] }> = [
+    { value: "visit", label: "Visita", icon: sport === "futebol" ? "stadium" : "arena" },
+    { value: "match", label: "Partida", icon: SPORT_INFO[sport].icon },
   ];
   return (
     <View style={styles.toggle} accessibilityRole="radiogroup">
@@ -408,8 +471,11 @@ function KindToggle({ value, onChange }: { value: Kind; onChange: (k: Kind) => v
   );
 }
 
-function StadiumPicker({ stadium, onChange }: { stadium: StadiumSummary | null; onChange: (s: StadiumSummary | null) => void }) {
+function StadiumPicker({ sport, stadium, onChange }: { sport: Sport; stadium: StadiumSummary | null; onChange: (s: StadiumSummary | null) => void }) {
   const { token } = useAuth();
+  const word = venueWord(sport);
+  const football = sport === "futebol";
+  const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Array<StadiumSummary & Partial<Pick<NearbyStadium, "distanceKm" | "upcoming">>> | null>(null);
   const nearby = results?.some((r) => r.distanceKm != null) ?? false;
@@ -417,10 +483,10 @@ function StadiumPicker({ stadium, onChange }: { stadium: StadiumSummary | null; 
 
   async function search() {
     const q = query.trim();
-    if (q.length < 2) return setState({ loading: false, error: "Digite ao menos 2 letras do estádio ou da cidade.", label: null });
+    if (q.length < 2) return setState({ loading: false, error: `Digite ao menos 2 letras do ${word} ou da cidade.`, label: null });
     setState({ loading: true, error: null, label: null });
     try {
-      setResults(await visitsApi(token).searchStadiums(q));
+      setResults(await visitsApi(token).searchStadiums(q, sport));
       setState({ loading: false, error: null, label: `Resultados para “${q}”` });
     } catch (error) {
       setState({ loading: false, error: (error as Error).message, label: null });
@@ -431,15 +497,15 @@ function StadiumPicker({ stadium, onChange }: { stadium: StadiumSummary | null; 
     setState({ loading: true, error: null, label: null });
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") return setState({ loading: false, error: "Permissão de localização negada. Busque o estádio pelo nome.", label: null });
+      if (status !== "granted") return setState({ loading: false, error: `Permissão de localização negada. Busque o ${word} pelo nome.`, label: null });
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      const list = await visitsApi(token).nearbyStadiums(pos.coords.latitude, pos.coords.longitude);
+      const list = await visitsApi(token).nearbyStadiums(pos.coords.latitude, pos.coords.longitude, 50, sport);
       setResults(list);
       const withGames = list.filter((x) => x.upcoming?.length).length;
       setState({
         loading: false,
-        error: list.length ? null : "Nenhum estádio do catálogo a até 50 km. Busque pelo nome.",
-        label: `Estádios perto de você${withGames ? ` · ${withGames} com ${withGames === 1 ? "jogo" : "jogos"} em 14 dias` : ""}`,
+        error: list.length ? null : `Nenhum ${word} do catálogo a até 50 km. Busque pelo nome ou cadastre o local.`,
+        label: `${football ? "Estádios" : "Locais"} perto de você${withGames ? ` · ${withGames} com ${withGames === 1 ? "jogo" : "jogos"} em 14 dias` : ""}`,
       });
     } catch {
       setState({ loading: false, error: "Não foi possível obter sua localização. Busque pelo nome.", label: null });
@@ -458,17 +524,32 @@ function StadiumPicker({ stadium, onChange }: { stadium: StadiumSummary | null; 
             {place(stadium)} · {stadium.country}
           </Text>
           {stadium.capacity != null && <Text style={type.suave}>Capacidade: {number.format(stadium.capacity)}</Text>}
+          {stadium.pending && <Text style={type.suave}>Cadastrado por você · em análise</Text>}
         </View>
-        <Pressable onPress={() => onChange(null)} accessibilityRole="button" accessibilityLabel="Trocar estádio" hitSlop={8} style={styles.change}>
+        <Pressable onPress={() => onChange(null)} accessibilityRole="button" accessibilityLabel={`Trocar ${word}`} hitSlop={8} style={styles.change}>
           <Text style={styles.link}>Trocar</Text>
         </Pressable>
       </View>
     );
   }
 
+  if (creating) {
+    return (
+      <NewVenueForm
+        sport={sport}
+        initialName={query.trim()}
+        onCancel={() => setCreating(false)}
+        onCreated={(s) => {
+          setCreating(false);
+          onChange(s);
+        }}
+      />
+    );
+  }
+
   return (
     <View style={styles.gap}>
-      <Text style={styles.label}>Estádio</Text>
+      <Text style={styles.label}>{SPORT_INFO[sport].venueNoun}</Text>
       <View style={styles.searchBox}>
         <KitIcon name="search" size={22} />
         <TextInput
@@ -476,9 +557,9 @@ function StadiumPicker({ stadium, onChange }: { stadium: StadiumSummary | null; 
           onChangeText={setQuery}
           onSubmitEditing={search}
           returnKeyType="search"
-          placeholder="Ex.: Maracanã, Bombonera…"
+          placeholder={football ? "Ex.: Maracanã, Bombonera…" : "Ex.: Maracanãzinho, Gigantinho…"}
           placeholderTextColor={colors.suave}
-          accessibilityLabel="Nome do estádio ou cidade"
+          accessibilityLabel={`Nome do ${word} ou cidade`}
           style={styles.searchInput}
         />
       </View>
@@ -495,7 +576,7 @@ function StadiumPicker({ stadium, onChange }: { stadium: StadiumSummary | null; 
       {results && !state.loading && (
         <View style={styles.gap}>
           {state.label && <Text style={[type.rotulo, styles.small]}>{state.label}</Text>}
-          {results.length === 0 && !state.error && <Text style={type.suave}>Nenhum estádio encontrado. Tente outro nome ou a cidade.</Text>}
+          {results.length === 0 && !state.error && <Text style={type.suave}>Nenhum {word} encontrado. Tente outro nome ou a cidade, ou cadastre o local.</Text>}
           {results.slice(0, 12).map((s) => (
             <View key={s.id} style={styles.resultCard}>
               <Pressable
@@ -511,6 +592,7 @@ function StadiumPicker({ stadium, onChange }: { stadium: StadiumSummary | null; 
                   </Text>
                   <Text style={type.suave} numberOfLines={1}>
                     {place(s)} · {s.country}
+                    {s.pending ? " · cadastrado por você" : ""}
                   </Text>
                 </View>
                 <Text style={type.suave}>
@@ -520,20 +602,116 @@ function StadiumPicker({ stadium, onChange }: { stadium: StadiumSummary | null; 
               {s.upcoming && s.upcoming.length > 0 && <UpcomingMatches matches={s.upcoming} />}
             </View>
           ))}
-          {nearby && results.length > 0 && (
-            <Text style={[type.suave, styles.small]}>Jogos das principais ligas (football-data.org) nos próximos 14 dias, no estádio do mandante.</Text>
+          {nearby && results.some((s) => s.upcoming?.length) && (
+            <Text style={[type.suave, styles.small]}>Jogos ({SPORT_COPY[sport].source ?? "principais ligas"}) nos próximos 14 dias, no local do mandante.</Text>
           )}
           {!nearby && results.some((s) => s.upcoming?.length) && (
-            <Text style={[type.suave, styles.small]}>Próximo jogo das principais ligas (football-data.org) nos próximos 30 dias, no estádio do mandante.</Text>
+            <Text style={[type.suave, styles.small]}>Próximo jogo ({SPORT_COPY[sport].source ?? "principais ligas"}) nos próximos 30 dias, no local do mandante.</Text>
           )}
         </View>
       )}
+      <Pressable onPress={() => setCreating(true)} accessibilityRole="button" hitSlop={8}>
+        <Text style={type.suave}>
+          Não achou o {word}? <Text style={styles.link}>Cadastrar local</Text>
+        </Text>
+      </Pressable>
     </View>
+  );
+}
+
+const VENUE_TYPE_LABEL: Record<VenueType, string> = { ginasio: "Ginásio", arena: "Arena", estadio: "Estádio" };
+
+/** Local que falta no catálogo: entra em análise e já pode receber o carimbo (só o autor vê até aprovar). */
+function NewVenueForm({
+  sport,
+  initialName,
+  onCancel,
+  onCreated,
+}: {
+  sport: Sport;
+  initialName: string;
+  onCancel: () => void;
+  onCreated: (s: StadiumSummary) => void;
+}) {
+  const { token } = useAuth();
+  const [name, setName] = useState(initialName);
+  const [city, setCity] = useState("");
+  const [uf, setUf] = useState("");
+  const [venueType, setVenueType] = useState<VenueType>(sport === "futebol" ? "estadio" : "ginasio");
+  const [sports, setSports] = useState<Sport[]>([sport]);
+  const [here, setHere] = useState(false);
+  const [state, setState] = useState<{ busy: boolean; error: string | null; fields: Record<string, string> }>({ busy: false, error: null, fields: {} });
+
+  async function submit() {
+    const fields: Record<string, string> = {};
+    if (name.trim().length < 3) fields.name = "Informe o nome do local.";
+    if (city.trim().length < 2) fields.city = "Informe a cidade.";
+    if (!sports.length) fields.sports = "Escolha pelo menos um esporte.";
+    if (Object.keys(fields).length) return setState({ busy: false, error: null, fields });
+    setState({ busy: true, error: null, fields: {} });
+    try {
+      let coords: { lat: number; lng: number } | null = null;
+      if (here) {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === "granted") {
+          const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+          coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        }
+      }
+      onCreated(await visitsApi(token).createVenue({ name: name.trim(), city: city.trim(), state: uf.trim() || null, sports, venueType, ...(coords ?? {}) }));
+    } catch (error) {
+      const message =
+        error instanceof ApiRequestError ? (Object.values(error.body.fields ?? {}).flat()[0] ?? error.message) : "Não foi possível cadastrar o local.";
+      setState({ busy: false, error: message, fields: {} });
+    }
+  }
+
+  return (
+    <Ticket innerStyle={styles.gap}>
+      <Text style={[type.titulo, styles.manualTitle]}>Cadastrar local</Text>
+      <Text style={type.corpo}>Ele entra em análise e já pode receber seu carimbo. Só você vê até a aprovação.</Text>
+      <TextField label="Nome do local" value={name} onChangeText={setName} placeholder="Ex.: Ginásio Municipal" maxLength={120} error={state.fields.name} />
+      <TextField label="Cidade" value={city} onChangeText={setCity} placeholder="Ex.: Bauru" maxLength={80} error={state.fields.city} />
+      <TextField label="UF (opcional)" value={uf} onChangeText={setUf} placeholder="SP" maxLength={40} autoCapitalize="characters" />
+      <Text style={styles.label}>Tipo</Text>
+      <View style={styles.wrap}>
+        {(Object.keys(VENUE_TYPE_LABEL) as VenueType[]).map((t) => (
+          <Chip key={t} label={VENUE_TYPE_LABEL[t]} active={venueType === t} onPress={() => setVenueType(t)} />
+        ))}
+      </View>
+      <Text style={styles.label}>Esportes jogados aqui</Text>
+      <View style={styles.wrap}>
+        {SPORTS.map((s) => (
+          <Chip
+            key={s}
+            label={SPORT_INFO[s].label}
+            active={sports.includes(s)}
+            onPress={() => setSports((list) => (list.includes(s) ? list.filter((x) => x !== s) : [...list, s]))}
+          />
+        ))}
+      </View>
+      {state.fields.sports && <Text style={styles.error}>{state.fields.sports}</Text>}
+      <Pressable onPress={() => setHere((v) => !v)} accessibilityRole="checkbox" accessibilityState={{ checked: here }} style={styles.pendingToggle}>
+        <View style={[styles.checkbox, here && styles.checkboxOn]}>{here && <Text style={styles.check}>✓</Text>}</View>
+        <View style={styles.flex}>
+          <Text style={styles.label}>Estou no local agora</Text>
+          <Text style={[type.suave, styles.small]}>Usa sua localização para marcar o local no mapa. Sem isso, usamos o centro da cidade.</Text>
+        </View>
+      </Pressable>
+      {state.error && <Text style={styles.error}>{state.error}</Text>}
+      <Button loading={state.busy} onPress={submit}>
+        Cadastrar e usar
+      </Button>
+      <Button variant="secundario" onPress={onCancel} disabled={state.busy}>
+        Cancelar
+      </Button>
+    </Ticket>
   );
 }
 
 function MatchStep({
   stadium,
+  sport,
   date,
   selected,
   manual,
@@ -541,6 +719,7 @@ function MatchStep({
   onManual,
 }: {
   stadium: StadiumSummary;
+  sport: Sport;
   date: string | null;
   selected: MatchResult | null;
   manual: Manual | null;
@@ -557,19 +736,22 @@ function MatchStep({
   const [state, setState] = useState<{ loading: boolean; error: string | null }>({ loading: true, error: null });
   const prefill = prefillMatch(stadium, date);
   // Com o próximo jogo do estádio conhecido, abre no preenchimento (já com os times)
-  const [mode, setMode] = useState<"busca" | "manual">(manual || prefill ? "manual" : "busca");
+  // Futsal não tem fonte de jogos: só o preenchimento manual
+  const searchable = hasMatchSource(sport);
+  const [mode, setMode] = useState<"busca" | "manual">(manual || prefill || !searchable ? "manual" : "busca");
 
   useEffect(() => {
-    visitsApi(token).competitions().then(setCompetitions, () => {});
-  }, [token]);
+    visitsApi(token).competitions(sport).then(setCompetitions, () => {});
+  }, [token, sport]);
 
   useEffect(() => {
+    if (!searchable) return;
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       setState({ loading: true, error: null });
       try {
         const list = await visitsApi(token).searchMatches(
-          { q: q.trim(), competicao: competition, data: useDate && date ? date : "", estadio: onlyStadium ? stadium.id : "" },
+          { q: q.trim(), competicao: competition, data: useDate && date ? date : "", estadio: onlyStadium ? stadium.id : "", esporte: sport },
           controller.signal,
         );
         setResults(list);
@@ -582,14 +764,21 @@ function MatchStep({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [token, q, competition, onlyStadium, useDate, date, stadium.id]);
+  }, [token, q, competition, onlyStadium, useDate, date, stadium.id, sport, searchable]);
 
   return (
     <>
-      <View style={styles.row}>
-        <Chip label="Buscar partida" active={mode === "busca"} onPress={() => setMode("busca")} />
-        <Chip label="Preencher à mão" active={mode === "manual"} onPress={() => setMode("manual")} />
-      </View>
+      {searchable ? (
+        <View style={styles.row}>
+          <Chip label="Buscar partida" active={mode === "busca"} onPress={() => setMode("busca")} />
+          <Chip label="Preencher à mão" active={mode === "manual"} onPress={() => setMode("manual")} />
+        </View>
+      ) : (
+        <Text style={styles.warn}>
+          Ainda não temos uma fonte de jogos de {SPORT_INFO[sport].label.toLowerCase()}. Preencha os times e o placar; se o jogo ainda não terminou, deixe
+          seu palpite e informe o resultado depois, no carimbo.
+        </Text>
+      )}
 
       {mode === "busca" ? (
         <>
@@ -598,7 +787,7 @@ function MatchStep({
             <TextInput
               value={q}
               onChangeText={setQ}
-              placeholder="Ex.: Flamengo x Botafogo"
+              placeholder={SPORT_COPY[sport].matchExample}
               placeholderTextColor={colors.suave}
               accessibilityLabel="Times da partida"
               style={styles.searchInput}
@@ -606,7 +795,7 @@ function MatchStep({
             />
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-            <Chip label={`Só no ${stadium.name.length > 22 ? "estádio" : stadium.name}`} active={onlyStadium} onPress={() => setOnlyStadium((v) => !v)} />
+            <Chip label={`Só em ${stadium.name.length > 22 ? `este ${venueWord(sport)}` : stadium.name}`} active={onlyStadium} onPress={() => setOnlyStadium((v) => !v)} />
             {date && <Chip label={`± 3 dias de ${formatDay(date)}`} active={useDate} onPress={() => setUseDate((v) => !v)} />}
           </ScrollView>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
@@ -623,7 +812,7 @@ function MatchStep({
               <View style={styles.matchCard}>
                 <Text style={styles.resultName}>Nenhuma partida encontrada com esses filtros.</Text>
                 <Text style={type.suave}>
-                  {onlyStadium ? "Desmarque “Só no estádio”, tire a data ou " : "Mude os filtros ou "}use “Preencher à mão”.
+                  {onlyStadium ? "Desmarque “Só em…”, tire a data ou " : "Mude os filtros ou "}use “Preencher à mão”.
                 </Text>
               </View>
             )}
@@ -641,11 +830,12 @@ function MatchStep({
                 </Text>
               </Pressable>
             ))}
-            <Text style={[type.rotulo, styles.small, styles.center]}>Dados: football-data.org · principais ligas</Text>
+            <Text style={[type.rotulo, styles.small, styles.center]}>Dados: {SPORT_COPY[sport].source}</Text>
           </View>
         </>
       ) : (
         <ManualForm
+          sport={sport}
           initial={manual ?? (prefill ? manualFromUpcoming(prefill) : null)}
           stadiumName={stadium.name}
           competitions={competitions}
@@ -657,11 +847,13 @@ function MatchStep({
 }
 
 function ManualForm({
+  sport,
   initial,
   stadiumName,
   competitions,
   onSubmit,
 }: {
+  sport: Sport;
   initial: Manual | null;
   stadiumName: string;
   competitions: CompetitionOption[];
@@ -679,10 +871,16 @@ function ManualForm({
       // Palpite opcional, mas com os dois lados
       if ((value.homeScore !== "" || value.awayScore !== "") && !guessFilled({ home: value.homeScore, away: value.awayScore })) {
         next.score = "Preencha os dois lados do palpite (ou deixe os dois vazios).";
+      } else if (guessFilled({ home: value.homeScore, away: value.awayScore })) {
+        const error = predictionError(sport, Number(value.homeScore), Number(value.awayScore));
+        if (error) next.score = error;
       }
       if (!validTime(value.kickoff)) next.kickoff = "Informe o horário de início (ex.: 21:30).";
     } else if (!isGoals(value.homeScore) || !isGoals(value.awayScore)) {
-      next.score = "Informe o placar (ex.: 2 e 1).";
+      next.score = sport === "volei" ? "Informe os sets (ex.: 3 e 1)." : "Informe o placar (ex.: 2 e 1).";
+    } else {
+      const error = scoreError(sport, Number(value.homeScore), Number(value.awayScore));
+      if (error) next.score = error;
     }
     if (value.home.name.trim() && value.home.name.trim().toLowerCase() === value.away.name.trim().toLowerCase()) next.away = "Mandante e visitante precisam ser diferentes.";
     setErrors(next);
@@ -714,8 +912,8 @@ function ManualForm({
           </Pressable>
         </View>
       )}
-      <TeamInput label="Mandante" value={value.home} onChange={(home) => setValue((v) => ({ ...v, home }))} error={errors.home} />
-      <TeamInput label="Visitante" value={value.away} onChange={(away) => setValue((v) => ({ ...v, away }))} error={errors.away} />
+      <TeamInput label="Mandante" sport={sport} value={value.home} onChange={(home) => setValue((v) => ({ ...v, home }))} error={errors.home} />
+      <TeamInput label="Visitante" sport={sport} value={value.away} onChange={(away) => setValue((v) => ({ ...v, away }))} error={errors.away} />
       <Pressable
         onPress={() => {
           setValue((v) => ({ ...v, pending: !v.pending, kickoff: !v.pending && !v.kickoff ? nowTime() : v.kickoff }));
@@ -728,7 +926,11 @@ function ManualForm({
         <View style={[styles.checkbox, value.pending && styles.checkboxOn]}>{value.pending && <Text style={styles.check}>✓</Text>}</View>
         <View style={styles.flex}>
           <Text style={styles.label}>O jogo ainda não terminou</Text>
-          <Text style={[type.suave, styles.small]}>O placar vira seu palpite. O resultado é buscado depois do jogo, ou você informa no carimbo.</Text>
+          <Text style={[type.suave, styles.small]}>
+            {hasMatchSource(sport)
+              ? "O placar vira seu palpite. O resultado é buscado depois do jogo, ou você informa no carimbo."
+              : "O placar vira seu palpite. Depois do jogo, informe o resultado no carimbo."}
+          </Text>
         </View>
       </Pressable>
       {value.pending && (
@@ -743,18 +945,31 @@ function ManualForm({
           error={errors.kickoff}
         />
       )}
-      <Text style={styles.label}>{value.pending ? "Seu palpite (opcional)" : "Placar"}</Text>
+      <Text style={styles.label}>{value.pending ? "Seu palpite (opcional)" : sport === "volei" ? "Placar em sets" : "Placar"}</Text>
       <View style={styles.scoreRow}>
-        <ScoreInput label="Gols do mandante" value={value.homeScore} onChange={(homeScore) => setValue((v) => ({ ...v, homeScore }))} invalid={!!errors.score} />
+        <ScoreInput
+          label={scoreFieldLabel(sport, "home")}
+          digits={scoreDigits(sport)}
+          value={value.homeScore}
+          onChange={(homeScore) => setValue((v) => ({ ...v, homeScore }))}
+          invalid={!!errors.score}
+        />
         <Text style={styles.times}>×</Text>
-        <ScoreInput label="Gols do visitante" value={value.awayScore} onChange={(awayScore) => setValue((v) => ({ ...v, awayScore }))} invalid={!!errors.score} />
+        <ScoreInput
+          label={scoreFieldLabel(sport, "away")}
+          digits={scoreDigits(sport)}
+          value={value.awayScore}
+          onChange={(awayScore) => setValue((v) => ({ ...v, awayScore }))}
+          invalid={!!errors.score}
+        />
       </View>
+      {sport === "volei" && <Text style={[type.suave, styles.small]}>Melhor de 5 sets: o vencedor tem 3.</Text>}
       {errors.score && <Text style={styles.error}>{errors.score}</Text>}
       <TextField
         label="Competição (opcional)"
         value={value.competition}
         onChangeText={(competition) => setValue((v) => ({ ...v, competition }))}
-        placeholder="Ex.: Copa do Brasil"
+        placeholder={SPORT_COPY[sport].competitionExample}
         maxLength={80}
       />
       {competitions.length > 0 && !value.competition && (
@@ -842,6 +1057,22 @@ const styles = StyleSheet.create({
   gap: { gap: 10 },
   gapSm: { gap: 4 },
   row: { flexDirection: "row", gap: 8 },
+  wrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  sportGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  sportItem: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: radius.campo,
+    borderWidth: 2,
+    borderColor: "rgba(18,58,50,0.2)",
+    backgroundColor: colors.branco,
+  },
+  sportText: { fontFamily: font.displaySemi, fontSize: 18, color: colors.estadio },
   flex: { flex: 1, minWidth: 0 },
   prefill: { flexDirection: "row", alignItems: "flex-start", gap: 8, padding: 10, borderRadius: 8, backgroundColor: colors.partida },
   prefillText: { fontFamily: font.sans, fontSize: 14, color: colors.tinta },

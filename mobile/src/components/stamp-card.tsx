@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View, type ImageSourcePropType } from "react-native";
 import type { TeamRef } from "@shared/api-types";
+import { SPORT_INFO, type Sport } from "@shared/sports";
 import { colors, font, radius, type } from "@/theme";
 import { KitIcon } from "./kit-icon";
 import { Stamp } from "./stamp";
@@ -30,6 +31,8 @@ type Props = {
   competition?: string | null;
   /** "row": cartão com o selo (padrão). "list": linha compacta da listagem. */
   layout?: "row" | "list";
+  /** Esporte do carimbo (ícone e rótulo); padrão: futebol. */
+  sport?: Sport;
   onPress?: () => void;
 };
 
@@ -74,9 +77,10 @@ function MatchLine({ match: m, names, crest = 24 }: { match: StampMatch; names?:
 }
 
 /** Carimbo do "Meu Passaporte": selo, estádio/cidade, confronto (partidas), tipo escrito (VISITA/PARTIDA) e data. */
-export function StampCard({ stadium, city, stateCode, kind, date, photo, tone, tag, match, competition, layout = "row", onPress }: Props) {
+export function StampCard({ stadium, city, stateCode, kind, date, photo, tone, tag, match, competition, layout = "row", sport = "futebol", onPress }: Props) {
   const isMatch = kind === "match";
-  const label = isMatch ? "Partida" : "Visita";
+  const label = isMatch ? (sport === "futebol" ? "Partida" : `Partida · ${SPORT_INFO[sport].label}`) : "Visita";
+  const contest = sport === "futebol" ? competition : [SPORT_INFO[sport].label, competition].filter(Boolean).join(" · ");
   const a11y = `${match ? `${matchLabel(match)}. ` : ""}${stadium}, ${city}. ${label}, ${formatStampDate(date)}${tag ? `. ${tag}` : ""}`;
 
   if (layout === "list") {
@@ -113,7 +117,7 @@ export function StampCard({ stadium, city, stateCode, kind, date, photo, tone, t
             </Text>
           )}
           <Text style={[type.suave, styles.small]} numberOfLines={1}>
-            {match ? `${stadium} · ${competition ?? city}` : `Visita · ${city}`}
+            {match ? `${stadium} · ${contest || city}` : `Visita · ${city}`}
           </Text>
           {tag && <Text style={[type.rotulo, styles.tag]}>{tag}</Text>}
         </View>
@@ -144,8 +148,9 @@ export function StampCard({ stadium, city, stateCode, kind, date, photo, tone, t
           {tag && <Text style={[type.rotulo, styles.tag]}>{tag}</Text>}
         </View>
         <View style={styles.kind}>
-          <KitIcon name={isMatch ? "football" : "stadium"} size={32} />
-          <Text style={[type.rotulo, styles.badge, { backgroundColor: isMatch ? colors.partida : colors.visita }]}>{label}</Text>
+          <KitIcon name={isMatch ? SPORT_INFO[sport].icon : sport === "futebol" ? "stadium" : "arena"} size={32} />
+          <Text style={[type.rotulo, styles.badge, { backgroundColor: isMatch ? colors.partida : colors.visita }]}>{isMatch ? "Partida" : "Visita"}</Text>
+          {isMatch && sport !== "futebol" && <Text style={styles.sportLabel}>{SPORT_INFO[sport].label}</Text>}
           <Text style={styles.date}>{formatStampDate(date)}</Text>
         </View>
         <KitIcon name="arrow-right" size={20} />
@@ -194,6 +199,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   date: { fontFamily: font.displayMedium, fontSize: 13, color: colors.estadio },
+  sportLabel: { fontFamily: font.displaySemi, fontSize: 12, color: colors.suave },
   tag: {
     alignSelf: "flex-start",
     marginTop: 6,

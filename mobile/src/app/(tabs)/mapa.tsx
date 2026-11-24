@@ -27,7 +27,7 @@ export default function MapaScreen() {
         <Text style={[type.titulo, styles.title]} accessibilityRole="header">
           Mapa dos estádios
         </Text>
-        <Text style={type.suave}>Explore o futebol pelo mundo</Text>
+        <Text style={type.suave}>Explore estádios e arenas pelo mundo</Text>
       </View>
 
       <View style={styles.mapBox}>

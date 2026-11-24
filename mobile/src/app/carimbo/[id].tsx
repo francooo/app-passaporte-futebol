@@ -1,3 +1,4 @@
+import { SPORT_INFO } from "@shared/sports";
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
@@ -134,7 +135,7 @@ export default function CarimboScreen() {
                 tone={isMatch ? "azul" : "verde"}
                 size={200}
               />
-              <Text style={[type.rotulo, styles.badge, { backgroundColor: isMatch ? colors.partida : colors.visita }]}>{isMatch ? "Partida" : "Visita"}</Text>
+              <Text style={[type.rotulo, styles.badge, { backgroundColor: isMatch ? colors.partida : colors.visita }]}>{isMatch ? `Partida · ${SPORT_INFO[v.sport].label}` : "Visita"}</Text>
               <Text style={styles.date}>{formatDay(v.date).toUpperCase()}</Text>
             </Ticket>
 
@@ -146,7 +147,7 @@ export default function CarimboScreen() {
                 {where} · {v.stadium.country}
               </Text>
               <Pressable onPress={() => router.push({ pathname: "/estadio/[id]", params: { id: v.stadium.id } })} accessibilityRole="link" hitSlop={6}>
-                <Text style={styles.link}>Ver página do estádio</Text>
+                <Text style={styles.link}>Ver página do {v.sport === "futebol" ? "estádio" : "local"}</Text>
               </Pressable>
             </View>
 

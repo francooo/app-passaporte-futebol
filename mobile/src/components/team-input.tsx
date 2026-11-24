@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import type { TeamRef } from "@shared/api-types";
+import type { Sport } from "@shared/sports";
+import { SPORT_COPY } from "@shared/sport-copy";
 import { useAuth } from "@/lib/auth-context";
 import { visitsApi } from "@/lib/visits";
 import { colors, font, radius, type } from "@/theme";
@@ -9,7 +11,20 @@ import { TeamCrest } from "./visit-bits";
 export type ManualTeam = { id: string | null; name: string; crestUrl: string | null };
 
 /** Time com sugestões do catálogo; texto livre cria um time novo (vai para moderação). */
-export function TeamInput({ label, value, onChange, error }: { label: string; value: ManualTeam; onChange: (t: ManualTeam) => void; error?: string }) {
+export function TeamInput({
+  label,
+  value,
+  onChange,
+  error,
+  sport,
+}: {
+  label: string;
+  value: ManualTeam;
+  onChange: (t: ManualTeam) => void;
+  error?: string;
+  /** Só times desse esporte ("Minas" do vôlei ≠ "Minas" do basquete). */
+  sport?: Sport;
+}) {
   const { token } = useAuth();
   const [options, setOptions] = useState<TeamRef[]>([]);
   const [focused, setFocused] = useState(false);
@@ -19,13 +34,13 @@ export function TeamInput({ label, value, onChange, error }: { label: string; va
     if (value.id || q.length < 2) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      visitsApi(token).searchTeams(q, controller.signal).then(setOptions, () => {});
+      visitsApi(token).searchTeams(q, controller.signal, sport).then(setOptions, () => {});
     }, 300);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [token, value.name, value.id]);
+  }, [token, value.name, value.id, sport]);
 
   const show = focused && !value.id && value.name.trim().length >= 2 && options.length > 0;
 
@@ -39,7 +54,7 @@ export function TeamInput({ label, value, onChange, error }: { label: string; va
           onChangeText={(name) => onChange({ id: null, name, crestUrl: null })}
           onFocus={() => setFocused(true)}
           onBlur={() => setTimeout(() => setFocused(false), 200)}
-          placeholder="Ex.: Flamengo"
+          placeholder={SPORT_COPY[sport ?? "futebol"].teamExample}
           placeholderTextColor={colors.suave}
           accessibilityLabel={label}
           maxLength={80}

@@ -1,3 +1,4 @@
+import { SPORT_INFO } from "@shared/sports";
 import { router } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -22,11 +23,14 @@ export default function PassaporteScreen() {
   const [tipo, setTipo] = useState("");
   const [ano, setAno] = useState("");
   const [competicao, setCompeticao] = useState("");
+  const [esporte, setEsporte] = useState("");
   const [view, setView] = useState<"blocos" | "lista">("blocos");
-  const { data, error, loading, reload } = useLoad(() => visitsApi(token).list({ tipo, ano, competicao }), [token, tipo, ano, competicao]);
+  const { data, error, loading, reload } = useLoad(() => visitsApi(token).list({ tipo, ano, competicao, esporte }), [token, tipo, ano, competicao, esporte]);
   useReloadOnFocus(reload);
 
-  const filtered = Boolean(tipo || ano || competicao);
+  const filtered = Boolean(tipo || ano || competicao || esporte);
+  // Só futebol: "estádios"; com outros esportes: "locais" (ginásios e arenas)
+  const onlyFootball = (data?.sports ?? []).every((s) => s === "futebol");
   const add = () => router.push("/registrar");
 
   return (
@@ -41,11 +45,28 @@ export default function PassaporteScreen() {
       <PerforatedFrame bleed style={styles.frame}>
         <BittenCard style={styles.counters}>
           <Counter value={data?.totals.stamps ?? 0} one="carimbo" many="carimbos" divider />
-          <Counter value={data?.totals.stadiums ?? 0} one="estádio" many="estádios" />
+          <Counter value={data?.totals.stadiums ?? 0} one={onlyFootball ? "estádio" : "local"} many={onlyFootball ? "estádios" : "locais"} />
         </BittenCard>
 
         {data && data.totals.stamps > 0 && (
           <View style={styles.filters}>
+            {data.sports.length > 1 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row} accessibilityLabel="Esporte">
+                <Chip label="Todos os esportes" active={!esporte} onPress={() => setEsporte("")} />
+                {data.sports.map((s) => (
+                  <Chip
+                    key={s}
+                    label={SPORT_INFO[s].label}
+                    active={esporte === s}
+                    onPress={() => {
+                      setEsporte(s);
+                      // As competições mudam com o esporte
+                      setCompeticao("");
+                    }}
+                  />
+                ))}
+              </ScrollView>
+            )}
             <View style={styles.row}>
               {kinds.map((k) => (
                 <Chip key={k.label} label={k.label} active={tipo === k.value} onPress={() => setTipo(k.value)} />

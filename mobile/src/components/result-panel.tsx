@@ -7,6 +7,8 @@ import { visitsApi } from "@/lib/visits";
 import { colors, font, radius, type } from "@/theme";
 import { Button } from "./button";
 import { KitIcon } from "./kit-icon";
+import { scoreDigits, scoreFieldLabel } from "@shared/sport-copy";
+import { scoreError, type Sport } from "@shared/sports";
 import { ScoreInput } from "./score-input";
 import { formatKickoff } from "./upcoming-matches";
 import { Scoreline } from "./visit-bits";
@@ -14,6 +16,8 @@ import { Scoreline } from "./visit-bits";
 const SOURCE: Record<string, string> = {
   "football-data": "Resultado: football-data.org",
   "api-football": "Resultado: API-Football",
+  "api-basketball": "Resultado: API-Sports (basquete)",
+  "api-volleyball": "Resultado: API-Sports (vôlei)",
   manual: "Resultado informado por você",
 };
 
@@ -51,6 +55,7 @@ export function ResultPanel({ visit: v, onChanged }: { visit: VisitDetail; onCha
       {form ? (
         <ScoreForm
           visitId={v.id}
+          sport={v.sport}
           kind={form}
           initial={form === "prediction" ? v.prediction : v.homeScore != null && v.awayScore != null ? { home: v.homeScore, away: v.awayScore } : null}
           onClose={() => setForm(null)}
@@ -102,12 +107,14 @@ function PredictionLine({ visit: v }: { visit: VisitDetail }) {
 
 function ScoreForm({
   visitId,
+  sport,
   kind,
   initial,
   onClose,
   onSaved,
 }: {
   visitId: string;
+  sport: Sport;
   kind: "result" | "prediction";
   initial: { home: number; away: number } | null;
   onClose: () => void;
@@ -120,8 +127,13 @@ function ScoreForm({
   const label = kind === "result" ? "Resultado" : "Palpite";
 
   async function save() {
-    if (!/^\d{1,2}$/.test(home) || !/^\d{1,2}$/.test(away)) {
-      setState({ busy: false, error: "Informe os gols dos dois times (ex.: 2 e 1)." });
+    if (!/^\d{1,3}$/.test(home) || !/^\d{1,3}$/.test(away)) {
+      setState({ busy: false, error: sport === "volei" ? "Informe os sets dos dois times (ex.: 3 e 1)." : "Informe o placar dos dois times (ex.: 2 e 1)." });
+      return;
+    }
+    const invalid = scoreError(sport, Number(home), Number(away));
+    if (invalid) {
+      setState({ busy: false, error: invalid });
       return;
     }
     setState({ busy: true, error: null });
@@ -139,9 +151,21 @@ function ScoreForm({
     <View style={styles.form}>
       <Text style={styles.formTitle}>{kind === "result" ? "Informar resultado" : "Seu palpite"}</Text>
       <View style={styles.scoreRow}>
-        <ScoreInput label={`${label}: gols do mandante`} value={home} onChange={setHome} invalid={!!state.error} />
+        <ScoreInput
+          label={`${label}: ${scoreFieldLabel(sport, "home").toLowerCase()}`}
+          digits={scoreDigits(sport)}
+          value={home}
+          onChange={setHome}
+          invalid={!!state.error}
+        />
         <Text style={styles.times}>×</Text>
-        <ScoreInput label={`${label}: gols do visitante`} value={away} onChange={setAway} invalid={!!state.error} />
+        <ScoreInput
+          label={`${label}: ${scoreFieldLabel(sport, "away").toLowerCase()}`}
+          digits={scoreDigits(sport)}
+          value={away}
+          onChange={setAway}
+          invalid={!!state.error}
+        />
       </View>
       {kind === "result" && <Text style={[type.suave, styles.small, styles.center]}>O resultado informado vale sobre a busca automática.</Text>}
       {state.error && <Text style={styles.error}>{state.error}</Text>}

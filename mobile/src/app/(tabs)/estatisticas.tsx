@@ -1,3 +1,4 @@
+import { SPORT_INFO } from "@shared/sports";
 import { router } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -24,6 +25,8 @@ export default function EstatisticasScreen() {
   const { data: s, error, loading, reload } = useLoad(() => visitsApi(token).stats(teamId), [token, teamId]);
   useReloadOnFocus(reload);
   const total = s ? s.matches + s.visits : 0;
+  // Com outros esportes: "locais" (ginásios e arenas) e as partidas separadas por esporte
+  const multi = (s?.bySport ?? []).some((b) => b.sport !== "futebol");
 
   return (
     <Screen refreshing={loading && !!s} onRefresh={reload}>
@@ -31,7 +34,7 @@ export default function EstatisticasScreen() {
         <Text style={[type.titulo, styles.title]} accessibilityRole="header">
           Sua jornada em números
         </Text>
-        <Text style={styles.subtitle}>Veja até onde o futebol já te levou.</Text>
+        <Text style={styles.subtitle}>Veja até onde o esporte já te levou.</Text>
       </View>
 
       {loading && !s ? (
@@ -54,8 +57,12 @@ export default function EstatisticasScreen() {
           <PerforatedFrame bleed style={styles.frame}>
             <View style={styles.tiles}>
               <Tile icon="globe" value={s.countries} label={s.countries === 1 ? "país" : "países"} />
-              <Tile icon="stadium" value={s.stadiums} label={s.stadiums === 1 ? "estádio" : "estádios"} />
-              <Tile icon="football" value={s.matches} label={s.matches === 1 ? "partida" : "partidas"} />
+              <Tile
+                icon={multi ? "arena" : "stadium"}
+                value={s.stadiums}
+                label={multi ? (s.stadiums === 1 ? "local" : "locais") : s.stadiums === 1 ? "estádio" : "estádios"}
+              />
+              <Tile icon={multi ? "trophy" : "football"} value={s.matches} label={s.matches === 1 ? "partida" : "partidas"} />
               {s.km != null ? (
                 <Tile icon="plane" value={s.km} label="km viajados" />
               ) : (
@@ -103,11 +110,22 @@ export default function EstatisticasScreen() {
                 <Text style={type.suave}>Nas partidas que você registrou com esse time em campo.</Text>
               </>
             ) : (
-              <Text style={type.suave}>Registre partidas para ver o desempenho do seu time quando você está no estádio.</Text>
+              <Text style={type.suave}>Registre partidas de futebol para ver o desempenho do seu time quando você está no estádio.</Text>
             )}
           </Panel>
 
-          <Panel title="Maiores estádios que você visitou" subtitle="Ranking por capacidade">
+          {multi && (
+            <Panel title="Partidas por esporte">
+              {s.bySport.map((b) => (
+                <View key={b.sport} style={styles.sportRow}>
+                  <KitIcon name={SPORT_INFO[b.sport].icon} size={24} />
+                  <Text style={[type.corpo, styles.flex1]}>{SPORT_INFO[b.sport].label}</Text>
+                  <Text style={[type.titulo, styles.sportCount]}>{b.matches}</Text>
+                </View>
+              ))}
+            </Panel>
+          )}
+          <Panel title={multi ? "Maiores locais que você visitou" : "Maiores estádios que você visitou"} subtitle="Ranking por capacidade">
             {s.biggestStadiums.length ? (
               s.biggestStadiums.map((st, i) => (
                 <Pressable
@@ -135,7 +153,7 @@ export default function EstatisticasScreen() {
                 </Pressable>
               ))
             ) : (
-              <Text style={type.suave}>Os estádios que você registrou não têm capacidade informada.</Text>
+              <Text style={type.suave}>Os locais que você registrou não têm capacidade informada.</Text>
             )}
           </Panel>
 
@@ -217,6 +235,9 @@ function WinRing({ rate }: { rate: number }) {
 }
 
 const styles = StyleSheet.create({
+  sportRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 4 },
+  flex1: { flex: 1 },
+  sportCount: { fontSize: 22 },
   title: { fontSize: 40, lineHeight: 46 },
   subtitle: { fontFamily: font.displayMedium, fontSize: 18, color: colors.tinta, marginTop: 2 },
   error: { fontFamily: font.sans, fontSize: 15, color: colors.erro },

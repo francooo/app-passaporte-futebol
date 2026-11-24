@@ -63,6 +63,7 @@ export function VisitStamp({ visit: v, onPress, view = "blocos" }: { visit: Visi
       tag={v.result?.status === "pending" ? "Aguardando resultado" : v.predictionOutcome === "exact" ? "Palpite na mosca!" : null}
       match={v.kind === "match" && (v.home || v.away) ? { home: v.home, away: v.away, homeScore: v.homeScore, awayScore: v.awayScore } : null}
       competition={v.competition}
+      sport={v.sport}
       layout={view === "lista" ? "list" : "row"}
       onPress={onPress}
     />

@@ -13,7 +13,7 @@ export function AuthShell({ title, children }: { title: string; children: ReactN
       <StatusBar style="light" />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Text style={[type.rotulo, styles.tagline]}>Futebol conecta pessoas a lugares incríveis</Text>
+          <Text style={[type.rotulo, styles.tagline]}>Esporte conecta pessoas a lugares incríveis</Text>
 
           <Ticket innerStyle={styles.card}>
             <Logo size="lg" style={styles.logo} />
@@ -25,7 +25,7 @@ export function AuthShell({ title, children }: { title: string; children: ReactN
           </Ticket>
 
           <Text style={styles.footer}>
-            Mais que futebol{"\n"}mais histórias
+            Mais que um jogo{"\n"}mais histórias
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
