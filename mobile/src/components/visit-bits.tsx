@@ -1,25 +1,13 @@
 import type { ReactNode } from "react";
-import { Image, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
-import { SvgUri } from "react-native-svg";
+import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import type { TeamRef, VisitSummary } from "@shared/api-types";
 import { remoteImage } from "@/lib/remote-image";
 import { colors, font, radius, type } from "@/theme";
 import { KitIcon } from "./kit-icon";
 import { StampCard } from "./stamp-card";
+import { TeamCrest } from "./team-crest";
 
-/** Escudo do time: os do football-data costumam ser SVG (o Image do RN não desenha SVG). */
-export function TeamCrest({ team, size = 40 }: { team: Pick<TeamRef, "crestUrl"> | null; size?: number }) {
-  const url = team?.crestUrl;
-  if (!url) return <KitIcon name="crest-stamp" size={size} />;
-  if (/\.svg(\?|$)/i.test(url)) {
-    return (
-      <View style={{ width: size, height: size }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        <SvgUri uri={url} width={size} height={size} />
-      </View>
-    );
-  }
-  return <Image source={remoteImage(url)} style={{ width: size, height: size }} resizeMode="contain" accessibilityIgnoresInvertColors />;
-}
+export { TeamCrest };
 
 /** "Mandante 2 × 1 Visitante" com escudos (nome embaixo do escudo, como no kit mobile). */
 export function Scoreline({
@@ -61,7 +49,7 @@ export function Scoreline({
 }
 
 /** Carimbo de um registro no "Meu Passaporte" (selo com a foto do estádio). */
-export function VisitStamp({ visit: v, onPress }: { visit: VisitSummary; onPress: () => void }) {
+export function VisitStamp({ visit: v, onPress, view = "blocos" }: { visit: VisitSummary; onPress: () => void; view?: "blocos" | "lista" }) {
   const [y, m, d] = v.date ? v.date.split("-").map(Number) : [];
   return (
     <StampCard
@@ -73,6 +61,9 @@ export function VisitStamp({ visit: v, onPress }: { visit: VisitSummary; onPress
       photo={v.stadium.thumbUrl ? remoteImage(v.stadium.thumbUrl) : null}
       tone={v.kind === "match" ? "azul" : "verde"}
       tag={v.result?.status === "pending" ? "Aguardando resultado" : v.predictionOutcome === "exact" ? "Palpite na mosca!" : null}
+      match={v.kind === "match" && (v.home || v.away) ? { home: v.home, away: v.away, homeScore: v.homeScore, awayScore: v.awayScore } : null}
+      competition={v.competition}
+      layout={view === "lista" ? "list" : "row"}
       onPress={onPress}
     />
   );

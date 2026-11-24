@@ -1,8 +1,8 @@
 import type { VisitSummary } from "@shared/api-types";
 import { StampCard } from "@/components/ui/stamp-card";
 
-/** Carimbo de um registro: linha no mobile, cartão vertical no desktop. */
-export function VisitStamp({ visit: v }: { visit: VisitSummary }) {
+/** Carimbo de um registro: em blocos (linha no mobile, cartão vertical no desktop) ou na listagem compacta. */
+export function VisitStamp({ visit: v, view = "blocos" }: { visit: VisitSummary; view?: "blocos" | "lista" }) {
   const [y, m, d] = v.date ? v.date.split("-").map(Number) : [];
   const props = {
     href: `/app/passaporte/${v.id}`,
@@ -14,7 +14,11 @@ export function VisitStamp({ visit: v }: { visit: VisitSummary }) {
     photoUrl: v.stadium.thumbUrl,
     tone: v.kind === "match" ? ("azul" as const) : ("verde" as const),
     tag: v.result?.status === "pending" ? "Aguardando resultado" : v.predictionOutcome === "exact" ? "Palpite na mosca!" : null,
+    // Partida: escudos e placar final (pendente mostra "– × –")
+    match: v.kind === "match" && (v.home || v.away) ? { home: v.home, away: v.away, homeScore: v.homeScore, awayScore: v.awayScore } : null,
+    competition: v.competition,
   };
+  if (view === "lista") return <StampCard {...props} layout="list" />;
   return (
     <>
       <div className="lg:hidden">

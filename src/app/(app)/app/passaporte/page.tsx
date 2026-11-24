@@ -29,6 +29,38 @@ function Counters({ stamps, stadiums, className }: { stamps: number; stadiums: n
   );
 }
 
+/** Exibição dos carimbos: blocos (padrão) ou lista compacta (?ver=lista). */
+function ViewToggle({ view, hrefFor }: { view: "blocos" | "lista"; hrefFor: (v: "blocos" | "lista") => string }) {
+  const options = [
+    { value: "blocos" as const, label: "Blocos", icon: <path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" /> },
+    { value: "lista" as const, label: "Lista", icon: <path d="M4 5h16M4 12h16M4 19h16" /> },
+  ];
+  return (
+    <nav aria-label="Exibição" className="flex shrink-0 overflow-hidden rounded-full border border-estadio/30 bg-white">
+      {options.map((o) => {
+        const active = view === o.value;
+        return (
+          <Link
+            key={o.value}
+            href={hrefFor(o.value)}
+            scroll={false}
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "inline-flex min-h-12 items-center gap-2 px-4 font-display text-lg text-estadio",
+              active ? "bg-ingresso font-semibold" : "hover:bg-partida/50",
+            )}
+          >
+            <svg viewBox="0 0 24 24" width={20} height={20} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              {o.icon}
+            </svg>
+            {o.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
 export default function PassaportePage({ searchParams }: PageProps<"/app/passaporte">) {
   return (
     <div className="flex flex-col gap-5 lg:gap-8">
@@ -58,14 +90,16 @@ async function Collection({ searchParams }: Pick<PageProps<"/app/passaporte">, "
     competition: competicao || null,
   });
   const filtered = Boolean(tipo || one(params.ano) || competicao);
+  const view = one(params.ver) === "lista" ? "lista" : "blocos";
 
-  const kindHref = (value: string | null) => {
+  // Monta o link mantendo os outros filtros (e o modo de exibição)
+  const hrefWith = (changes: Record<string, string | null>) => {
     const next = new URLSearchParams();
-    if (value) next.set("tipo", value);
-    if (one(params.ano)) next.set("ano", one(params.ano)!);
-    if (competicao) next.set("competicao", competicao);
+    const current: Record<string, string | null | undefined> = { tipo, ano: one(params.ano), competicao, ver: view === "lista" ? "lista" : null };
+    for (const [key, value] of Object.entries({ ...current, ...changes })) if (value) next.set(key, value);
     return `/app/passaporte${next.size ? `?${next}` : ""}`;
   };
+  const kindHref = (value: string | null) => hrefWith({ tipo: value });
   const kinds = [
     { value: null, label: "Todos" },
     { value: "partida", label: "Partidas" },
@@ -119,20 +153,31 @@ async function Collection({ searchParams }: Pick<PageProps<"/app/passaporte">, "
               />
             )}
           </nav>
-          {list.competitions.length > 0 && (
-            <FilterSelect
-              param="competicao"
-              label="Competição"
-              icon="trophy"
-              allLabel="Todas as competições"
-              options={list.competitions.map((c) => ({ value: c, label: c }))}
-              className="lg:min-w-80"
-            />
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {list.competitions.length > 0 && (
+              <FilterSelect
+                param="competicao"
+                label="Competição"
+                icon="trophy"
+                allLabel="Todas as competições"
+                options={list.competitions.map((c) => ({ value: c, label: c }))}
+                className="w-full min-w-0 sm:w-auto sm:flex-1 lg:min-w-80"
+              />
+            )}
+            <ViewToggle view={view} hrefFor={(v) => hrefWith({ ver: v === "lista" ? "lista" : null })} />
+          </div>
         </div>
       )}
 
-      {list.items.length > 0 ? (
+      {list.items.length > 0 && view === "lista" ? (
+        <ul className="perfurado -mx-5 flex flex-col gap-2 bg-ingresso px-5 py-4 md:mx-0 md:rounded-ticket md:px-6 lg:p-8">
+          {list.items.map((v) => (
+            <li key={v.id}>
+              <VisitStamp visit={v} view="lista" />
+            </li>
+          ))}
+        </ul>
+      ) : list.items.length > 0 ? (
         <ul className="perfurado -mx-5 flex flex-col gap-3 bg-ingresso px-5 py-4 md:mx-0 md:rounded-ticket md:px-6 lg:grid lg:grid-cols-2 lg:gap-6 lg:p-8 xl:grid-cols-3">
           {list.items.map((v) => (
             <li key={v.id}>

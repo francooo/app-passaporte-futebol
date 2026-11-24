@@ -22,6 +22,7 @@ export default function PassaporteScreen() {
   const [tipo, setTipo] = useState("");
   const [ano, setAno] = useState("");
   const [competicao, setCompeticao] = useState("");
+  const [view, setView] = useState<"blocos" | "lista">("blocos");
   const { data, error, loading, reload } = useLoad(() => visitsApi(token).list({ tipo, ano, competicao }), [token, tipo, ano, competicao]);
   useReloadOnFocus(reload);
 
@@ -49,6 +50,10 @@ export default function PassaporteScreen() {
               {kinds.map((k) => (
                 <Chip key={k.label} label={k.label} active={tipo === k.value} onPress={() => setTipo(k.value)} />
               ))}
+            </View>
+            <View style={styles.row} accessibilityLabel="Exibição">
+              <Chip label="Blocos" active={view === "blocos"} onPress={() => setView("blocos")} />
+              <Chip label="Lista" active={view === "lista"} onPress={() => setView("lista")} />
             </View>
             {data.years.length > 0 && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
@@ -79,7 +84,7 @@ export default function PassaporteScreen() {
             </Button>
           </View>
         ) : data && data.items.length > 0 ? (
-          data.items.map((v) => <VisitStamp key={v.id} visit={v} onPress={() => router.push({ pathname: "/carimbo/[id]", params: { id: v.id } })} />)
+          data.items.map((v) => <VisitStamp key={v.id} visit={v} view={view} onPress={() => router.push({ pathname: "/carimbo/[id]", params: { id: v.id } })} />)
         ) : (
           <EmptyState
             title={filtered ? "Nenhum carimbo com esses filtros" : "Seu passaporte está em branco"}
