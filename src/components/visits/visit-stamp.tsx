@@ -17,6 +17,7 @@ export function VisitStamp({ visit: v, view = "blocos" }: { visit: VisitSummary;
     // Partida: escudos e placar final (pendente mostra "– × –")
     match: v.kind === "match" && (v.home || v.away) ? { home: v.home, away: v.away, homeScore: v.homeScore, awayScore: v.awayScore } : null,
     competition: v.competition,
+    sport: v.sport,
   };
   if (view === "lista") return <StampCard {...props} layout="list" />;
   return (

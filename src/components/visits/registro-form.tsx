@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { CompetitionOption, MatchResult, NearbyStadium, StadiumSummary, TeamRef, UpcomingMatch, VisitDetail } from "@shared/api-types";
 import { PHOTO_LIMITS } from "@shared/schemas";
+import { predictionError, scoreError, SPORT_INFO, type Sport, type VenueType } from "@shared/sports";
 import { place, StadiumThumb } from "@/components/catalog/stadium-bits";
 import { Button } from "@/components/ui/button";
 import { KitIcon } from "@/components/ui/kit-icon";
@@ -13,6 +14,7 @@ import { api, ApiFailure, formatDay, todayIso, uploadPhoto } from "@/lib/client-
 import { cn } from "@/lib/cn";
 import { Scoreline, TeamCrest } from "./team-crest";
 import { formatKickoff, UpcomingMatches } from "./upcoming-matches";
+import { hasMatchSource, scoreDigits, scoreFieldLabel, SPORT_COPY, SportPicker, venueWord } from "./sport-bits";
 
 type Kind = "visit" | "match";
 type Step = 1 | 2 | 3;
@@ -34,7 +36,8 @@ type Guess = { home: string; away: string };
 
 const emptyTeam: ManualTeam = { id: null, name: "", crestUrl: null };
 const emptyGuess: Guess = { home: "", away: "" };
-const isGoals = (s: string) => /^\d{1,2}$/.test(s);
+/** Placar digitado (até 3 dígitos: basquete). */
+const isGoals = (s: string) => /^\d{1,3}$/.test(s);
 const guessFilled = (g: Guess) => isGoals(g.home) && isGoals(g.away);
 /** Partida escolhida que ainda não terminou (hoje/ao vivo): o placar vira palpite. */
 const isOpenMatch = (m: MatchResult | null) => Boolean(m?.status && m.status !== "FINISHED");
@@ -85,6 +88,8 @@ export function RegistroForm({ initialStadium }: { initialStadium: StadiumSummar
   const router = useRouter();
   const [step, setStep] = useState<Step>(1);
   const [kind, setKind] = useState<Kind>("match");
+  // Local vindo da página dele: começa no esporte do local (ginásio → vôlei)
+  const [sport, setSport] = useState<Sport>(initialStadium && !initialStadium.sports.includes("futebol") ? initialStadium.sports[0] : "futebol");
   const [stadium, setStadium] = useState<StadiumSummary | null>(initialStadium);
   const [date, setDate] = useState("");
   const [match, setMatch] = useState<MatchResult | null>(null);
@@ -131,10 +136,11 @@ export function RegistroForm({ initialStadium }: { initialStadium: StadiumSummar
   async function submit() {
     if (!stadium) return;
     setStatus({ busy: true, message: "Criando carimbo…", error: null });
-    const body: Record<string, unknown> = { kind, stadiumId: stadium.id, date: date || null, note: note || null };
+    const body: Record<string, unknown> = { kind, sport, stadiumId: stadium.id, date: date || null, note: note || null };
     if (kind === "match" && match) {
       body.matchId = match.id;
-      if (isOpenMatch(match) && guessFilled(guess)) {
+      // Palpite inválido para o esporte (ex.: 3×3 no vôlei) não vai: o aviso já aparece no campo
+      if (isOpenMatch(match) && guessFilled(guess) && !predictionError(match.sport, Number(guess.home), Number(guess.away))) {
         Object.assign(body, { predictedHomeScore: Number(guess.home), predictedAwayScore: Number(guess.away) });
       }
     }
@@ -194,6 +200,7 @@ export function RegistroForm({ initialStadium }: { initialStadium: StadiumSummar
   const preview = (
     <PreviewCard
       stadium={stadium}
+      sport={sport}
       kind={kind}
       date={date || (match ? match.utcDate.slice(0, 10) : manual?.fromMatch ? localDay(manual.fromMatch.utcDate) : "")}
       match={match}
@@ -220,6 +227,15 @@ export function RegistroForm({ initialStadium }: { initialStadium: StadiumSummar
         <div className={cn("flex flex-col gap-6", step === 2 ? "lg:col-span-12" : "lg:col-span-8")}>
           {step === 1 && (
             <StepStadium
+              sport={sport}
+              onSport={(s) => {
+                setSport(s);
+                setMatch(null);
+                setManual(null);
+                setGuess(emptyGuess);
+                // Local que não recebe o esporte novo: escolhe de novo
+                if (stadium && !stadium.sports.includes(s)) setStadium(null);
+              }}
               kind={kind}
               onKind={(k) => {
                 setKind(k);
@@ -241,6 +257,7 @@ export function RegistroForm({ initialStadium }: { initialStadium: StadiumSummar
           {step === 2 && stadium && (
             <StepMatch
               stadium={stadium}
+              sport={sport}
               date={date}
               selected={match}
               manual={manual}
@@ -262,6 +279,7 @@ export function RegistroForm({ initialStadium }: { initialStadium: StadiumSummar
           {step === 3 && stadium && (
             <StepPhotos
               stadium={stadium}
+              sport={sport}
               kind={kind}
               date={date}
               match={match}
@@ -311,6 +329,8 @@ function Stepper({ total, current }: { total: number; current: number }) {
 }
 
 function StepStadium({
+  sport,
+  onSport,
   kind,
   onKind,
   stadium,
@@ -319,6 +339,8 @@ function StepStadium({
   onDate,
   onNext,
 }: {
+  sport: Sport;
+  onSport: (s: Sport) => void;
   kind: Kind;
   onKind: (k: Kind) => void;
   stadium: StadiumSummary | null;
@@ -331,18 +353,29 @@ function StepStadium({
   const [results, setResults] = useState<Array<StadiumSummary & Partial<Pick<NearbyStadium, "distanceKm" | "upcoming">>> | null>(null);
   const nearby = results?.some((r) => r.distanceKm != null) ?? false;
   const [state, setState] = useState<{ loading: boolean; error: string | null; label: string | null }>({ loading: false, error: null, label: null });
+  const [creating, setCreating] = useState(false);
   const dateId = useId();
+  const word = venueWord(sport);
+  const football = sport === "futebol";
+
+  // Trocou o esporte: a lista anterior não vale mais
+  const [listedSport, setListedSport] = useState(sport);
+  if (listedSport !== sport) {
+    setListedSport(sport);
+    setResults(null);
+    setState({ loading: false, error: null, label: null });
+  }
 
   async function search(e?: FormEvent) {
     e?.preventDefault();
     const q = query.trim();
     if (q.length < 2) {
-      setState({ loading: false, error: "Digite ao menos 2 letras do estádio ou da cidade.", label: null });
+      setState({ loading: false, error: `Digite ao menos 2 letras do ${word} ou da cidade.`, label: null });
       return;
     }
     setState({ loading: true, error: null, label: null });
     try {
-      const list = await api<StadiumSummary[]>(`/api/catalog/stadiums/search?q=${encodeURIComponent(q)}`);
+      const list = await api<StadiumSummary[]>(`/api/catalog/stadiums/search?q=${encodeURIComponent(q)}&esporte=${sport}`);
       setResults(list);
       setState({ loading: false, error: null, label: `Resultados para “${q}”` });
     } catch (error) {
@@ -360,14 +393,14 @@ function StepStadium({
       async (pos) => {
         try {
           const list = await api<NearbyStadium[]>(
-            `/api/catalog/stadiums/nearby?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}&raio=50`,
+            `/api/catalog/stadiums/nearby?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}&raio=50&esporte=${sport}`,
           );
           setResults(list);
           const withGames = list.filter((s) => s.upcoming?.length).length;
           setState({
             loading: false,
-            error: list.length ? null : "Nenhum estádio do catálogo a até 50 km. Busque pelo nome.",
-            label: `Estádios perto de você${withGames ? ` · ${withGames} com ${withGames === 1 ? "jogo" : "jogos"} nos próximos 14 dias` : ""}`,
+            error: list.length ? null : `Nenhum ${word} do catálogo a até 50 km. Busque pelo nome ou cadastre o local.`,
+            label: `${football ? "Estádios" : "Locais"} perto de você${withGames ? ` · ${withGames} com ${withGames === 1 ? "jogo" : "jogos"} nos próximos 14 dias` : ""}`,
           });
         } catch (error) {
           setState({ loading: false, error: (error as Error).message, label: null });
@@ -378,7 +411,7 @@ function StepStadium({
           loading: false,
           error:
             err.code === err.PERMISSION_DENIED
-              ? "Permissão de localização negada. Busque o estádio pelo nome."
+              ? `Permissão de localização negada. Busque o ${word} pelo nome.`
               : "Não foi possível obter sua localização. Busque pelo nome.",
           label: null,
         }),
@@ -388,26 +421,37 @@ function StepStadium({
 
   return (
     <>
-      <KindToggle value={kind} onChange={onKind} />
+      <SportPicker value={sport} onChange={onSport} />
+      <KindToggle value={kind} onChange={onKind} sport={sport} />
 
       <section aria-labelledby="estadio-titulo" className="flex flex-col gap-3">
         <h2 id="estadio-titulo" className="font-display text-xl font-semibold text-estadio">
-          Estádio
+          {SPORT_INFO[sport].venueNoun}
         </h2>
 
         {stadium ? (
           <SelectedStadium stadium={stadium} onClear={() => onStadium(null)} />
+        ) : creating ? (
+          <NewVenueForm
+            sport={sport}
+            initialName={query.trim()}
+            onCancel={() => setCreating(false)}
+            onCreated={(s) => {
+              setCreating(false);
+              onStadium(s);
+            }}
+          />
         ) : (
           <>
             <form onSubmit={search} role="search" className="flex flex-col gap-3">
               <label className="flex min-h-14 items-center gap-3 rounded-xl border border-linha bg-white px-4 focus-within:border-estadio focus-within:ring-2 focus-within:ring-estadio/30">
                 <KitIcon name="search" size={24} />
-                <span className="sr-only">Nome do estádio ou cidade</span>
+                <span className="sr-only">Nome do {word} ou cidade</span>
                 <input
                   type="search"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Ex.: Maracanã, Bombonera, Madri…"
+                  placeholder={football ? "Ex.: Maracanã, Bombonera, Madri…" : "Ex.: Maracanãzinho, Gigantinho, Bauru…"}
                   autoComplete="off"
                   className="min-w-0 flex-1 bg-transparent py-3 text-lg text-tinta outline-none placeholder:text-suave"
                 />
@@ -419,7 +463,7 @@ function StepStadium({
                   className="inline-flex min-h-12 items-center justify-center gap-3 rounded-xl bg-estadio px-5 font-display text-lg font-semibold text-marfim transition-colors hover:bg-estadio-claro disabled:opacity-60"
                 >
                   <KitIcon name="search" size={22} className="invert" />
-                  Buscar estádio
+                  Buscar {word}
                 </button>
                 <button
                   type="button"
@@ -434,14 +478,14 @@ function StepStadium({
             </form>
 
             <div aria-live="polite" className="flex flex-col gap-2">
-              {state.loading && <p className="text-suave">Procurando estádios…</p>}
+              {state.loading && <p className="text-suave">Procurando {football ? "estádios" : "locais"}…</p>}
               {state.error && <p className="text-sm text-erro">{state.error}</p>}
               {results && !state.loading && (
                 <>
                   {state.label && <p className="rotulo-display text-xs text-suave">{state.label}</p>}
                   {results.length === 0 && !state.error ? (
                     <p className="rounded-xl border border-dashed border-linha p-4 text-suave">
-                      Nenhum estádio encontrado. Tente outro nome ou a cidade.
+                      Nenhum {word} encontrado. Tente outro nome ou a cidade, ou cadastre o local abaixo.
                     </p>
                   ) : (
                     <ul className="flex max-h-[26rem] flex-col gap-2 overflow-y-auto pr-1">
@@ -457,6 +501,7 @@ function StepStadium({
                               <span className="titulo-display block truncate text-lg text-estadio">{s.name}</span>
                               <span className="block truncate text-sm text-suave">
                                 {place(s)} · {s.country}
+                                {s.pending && " · cadastrado por você"}
                               </span>
                             </span>
                             <span className="text-right text-sm text-suave">
@@ -468,15 +513,25 @@ function StepStadium({
                       ))}
                     </ul>
                   )}
-                  {nearby && results.length > 0 && (
-                    <p className="text-xs text-suave">Jogos das principais ligas (football-data.org) nos próximos 14 dias, no estádio do mandante.</p>
+                  {nearby && results.some((s) => s.upcoming?.length) && (
+                    <p className="text-xs text-suave">
+                      Jogos ({SPORT_COPY[sport].source ?? "principais ligas"}) nos próximos 14 dias, no local do mandante.
+                    </p>
                   )}
                   {!nearby && results.some((s) => s.upcoming?.length) && (
-                    <p className="text-xs text-suave">Próximo jogo das principais ligas (football-data.org) nos próximos 30 dias, no estádio do mandante.</p>
+                    <p className="text-xs text-suave">
+                      Próximo jogo ({SPORT_COPY[sport].source ?? "principais ligas"}) nos próximos 30 dias, no local do mandante.
+                    </p>
                   )}
                 </>
               )}
             </div>
+            <p className="text-sm text-suave">
+              Não achou o {word}?{" "}
+              <button type="button" onClick={() => setCreating(true)} className="min-h-8 font-semibold text-estadio underline underline-offset-4">
+                Cadastrar local
+              </button>
+            </p>
           </>
         )}
       </section>
@@ -507,15 +562,15 @@ function StepStadium({
           <KitIcon name="arrow-right" size={22} />
         </Button>
       </div>
-      {!stadium && <p className="-mt-4 text-right text-sm text-suave">Escolha o estádio para continuar.</p>}
+      {!stadium && <p className="-mt-4 text-right text-sm text-suave">Escolha o {word} para continuar.</p>}
     </>
   );
 }
 
-function KindToggle({ value, onChange }: { value: Kind; onChange: (k: Kind) => void }) {
-  const options: Array<{ value: Kind; label: string; icon: "stadium" | "football" }> = [
-    { value: "visit", label: "Visita", icon: "stadium" },
-    { value: "match", label: "Partida", icon: "football" },
+function KindToggle({ value, onChange, sport }: { value: Kind; onChange: (k: Kind) => void; sport: Sport }) {
+  const options: Array<{ value: Kind; label: string; icon: "stadium" | "arena" | (typeof SPORT_INFO)[Sport]["icon"] }> = [
+    { value: "visit", label: "Visita", icon: sport === "futebol" ? "stadium" : "arena" },
+    { value: "match", label: "Partida", icon: SPORT_INFO[sport].icon },
   ];
   return (
     <fieldset>
@@ -556,9 +611,10 @@ function SelectedStadium({ stadium, onClear }: { stadium: StadiumSummary; onClea
         </p>
         {stadium.capacity != null && (
           <p className="mt-0.5 flex items-center gap-1 text-sm text-suave">
-            <KitIcon name="stadium" size={18} /> Capacidade: {number.format(stadium.capacity)}
+            <KitIcon name={stadium.venueType === "estadio" ? "stadium" : "arena"} size={18} /> Capacidade: {number.format(stadium.capacity)}
           </p>
         )}
+        {stadium.pending && <p className="mt-0.5 text-sm text-suave">Cadastrado por você · em análise</p>}
       </div>
       {onClear && (
         <button
@@ -575,6 +631,7 @@ function SelectedStadium({ stadium, onClear }: { stadium: StadiumSummary; onClea
 
 function StepMatch({
   stadium,
+  sport,
   date,
   selected,
   manual,
@@ -583,6 +640,7 @@ function StepMatch({
   onBack,
 }: {
   stadium: StadiumSummary;
+  sport: Sport;
   date: string;
   selected: MatchResult | null;
   manual: Manual | null;
@@ -598,16 +656,18 @@ function StepMatch({
   const [results, setResults] = useState<MatchResult[] | null>(null);
   const [state, setState] = useState<{ loading: boolean; error: string | null }>({ loading: true, error: null });
   const prefill = prefillMatch(stadium, date);
+  const searchable = hasMatchSource(sport);
 
   useEffect(() => {
-    api<CompetitionOption[]>("/api/competitions").then(setCompetitions, () => setCompetitions([]));
-  }, []);
+    api<CompetitionOption[]>(`/api/competitions?esporte=${sport}`).then(setCompetitions, () => setCompetitions([]));
+  }, [sport]);
 
   // Busca ao abrir e sempre que um filtro muda (texto com pequena espera)
   useEffect(() => {
+    if (!searchable) return;
     const controller = new AbortController();
     const timer = setTimeout(async () => {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams({ esporte: sport });
       if (q.trim()) params.set("q", q.trim());
       if (competition) params.set("competicao", competition);
       if (day) params.set("data", day);
@@ -625,12 +685,25 @@ function StepMatch({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [q, competition, day, onlyStadium, stadium.id]);
+  }, [q, competition, day, onlyStadium, stadium.id, sport, searchable]);
 
   const filterBox = "flex min-h-12 items-center gap-2 rounded-xl border border-linha bg-white px-3 focus-within:border-estadio";
 
   return (
     <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[1fr_22rem] lg:items-start xl:grid-cols-[1fr_26rem]">
+      {!searchable ? (
+        <section aria-label="Partidas" className="perfurado flex flex-col gap-2 rounded-ticket bg-ingresso p-4">
+          <div className="papel rounded-xl p-4 text-tinta">
+            <p className="flex items-center gap-2 font-semibold text-estadio">
+              <KitIcon name={SPORT_INFO[sport].icon} size={26} /> {SPORT_INFO[sport].label}: registro manual
+            </p>
+            <p className="mt-1 text-sm text-suave">
+              Ainda não temos uma fonte de jogos de {SPORT_INFO[sport].label.toLowerCase()}. Preencha os times e o placar ao lado; se o jogo ainda não
+              terminou, deixe seu palpite e informe o resultado depois, no carimbo.
+            </p>
+          </div>
+        </section>
+      ) : (
       <section aria-label="Buscar partida" className="flex flex-col gap-3">
         <label className="flex min-h-14 items-center gap-3 rounded-xl border border-linha bg-white px-4 focus-within:border-estadio focus-within:ring-2 focus-within:ring-estadio/30">
           <KitIcon name="search" size={24} />
@@ -639,7 +712,7 @@ function StepMatch({
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Ex.: Flamengo x Botafogo"
+            placeholder={SPORT_COPY[sport].matchExample}
             autoComplete="off"
             className="min-w-0 flex-1 bg-transparent py-3 text-lg text-tinta outline-none placeholder:text-suave"
           />
@@ -680,7 +753,7 @@ function StepMatch({
               onChange={(e) => setOnlyStadium(e.target.checked)}
               className="size-5 accent-[var(--color-estadio)]"
             />
-            <span className="truncate text-sm text-tinta">Só no {stadium.name}</span>
+            <span className="truncate text-sm text-tinta">Só em {stadium.name}</span>
           </label>
         </div>
 
@@ -691,7 +764,7 @@ function StepMatch({
             <div className="papel rounded-xl p-4 text-tinta">
               <p className="font-semibold">Nenhuma partida encontrada com esses filtros.</p>
               <p className="mt-1 text-sm text-suave">
-                {onlyStadium ? "Desmarque “Só no estádio”, mude a data ou " : "Mude os filtros ou "}
+                {onlyStadium ? `Desmarque “Só em ${stadium.name}”, mude a data ou ` : "Mude os filtros ou "}
                 use o preenchimento manual ao lado.
               </p>
             </div>
@@ -726,11 +799,14 @@ function StepMatch({
               ))}
             </ul>
           )}
-          <p className="rotulo-display text-center text-xs text-estadio">Dados: football-data.org · principais ligas</p>
+          <p className="rotulo-display text-center text-xs text-estadio">Dados: {SPORT_COPY[sport].source}</p>
         </div>
       </section>
+      )}
 
       <ManualForm
+        key={sport}
+        sport={sport}
         initial={manual ?? (prefill ? manualFromUpcoming(prefill) : null)}
         stadiumName={stadium.name}
         onSubmit={onManual}
@@ -749,11 +825,13 @@ function StepMatch({
 const emptyManual: Manual = { home: emptyTeam, away: emptyTeam, homeScore: "", awayScore: "", competition: "", pending: false, kickoff: "" };
 
 function ManualForm({
+  sport,
   initial,
   stadiumName,
   onSubmit,
   competitions,
 }: {
+  sport: Sport;
   initial: Manual | null;
   stadiumName: string;
   onSubmit: (m: Manual) => void;
@@ -774,10 +852,16 @@ function ManualForm({
       // Palpite opcional, mas com os dois lados
       if ((value.homeScore !== "" || value.awayScore !== "") && !guessFilled({ home: value.homeScore, away: value.awayScore })) {
         next.score = "Preencha os dois lados do palpite (ou deixe os dois vazios).";
+      } else if (guessFilled({ home: value.homeScore, away: value.awayScore })) {
+        const error = predictionError(sport, Number(value.homeScore), Number(value.awayScore));
+        if (error) next.score = error;
       }
       if (!/^\d{2}:\d{2}$/.test(value.kickoff)) next.kickoff = "Informe o horário de início.";
     } else if (!isGoals(value.homeScore) || !isGoals(value.awayScore)) {
-      next.score = "Informe o placar (ex.: 2 e 1).";
+      next.score = sport === "volei" ? "Informe os sets (ex.: 3 e 1)." : "Informe o placar (ex.: 2 e 1).";
+    } else {
+      const error = scoreError(sport, Number(value.homeScore), Number(value.awayScore));
+      if (error) next.score = error;
     }
     if (value.home.name.trim() && value.home.name.trim().toLowerCase() === value.away.name.trim().toLowerCase()) {
       next.away = "Mandante e visitante precisam ser diferentes.";
@@ -812,8 +896,8 @@ function ManualForm({
             </button>
           </div>
         )}
-        <TeamInput label="Mandante" value={value.home} onChange={(home) => setValue((v) => ({ ...v, home }))} error={errors.home} />
-        <TeamInput label="Visitante" value={value.away} onChange={(away) => setValue((v) => ({ ...v, away }))} error={errors.away} />
+        <TeamInput label="Mandante" sport={sport} value={value.home} onChange={(home) => setValue((v) => ({ ...v, home }))} error={errors.home} />
+        <TeamInput label="Visitante" sport={sport} value={value.away} onChange={(away) => setValue((v) => ({ ...v, away }))} error={errors.away} />
         <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-linha bg-white p-3">
           <input
             type="checkbox"
@@ -827,7 +911,7 @@ function ManualForm({
           />
           <span>
             <span className="block font-semibold text-estadio">O jogo ainda não terminou</span>
-            <span className="block text-sm text-suave">O placar vira seu palpite. O resultado é buscado depois do jogo, ou você informa no carimbo.</span>
+            <span className="block text-sm text-suave">{hasMatchSource(sport) ? "O placar vira seu palpite. O resultado é buscado depois do jogo, ou você informa no carimbo." : "O placar vira seu palpite. Depois do jogo, informe o resultado no carimbo."}</span>
           </span>
         </label>
         {value.pending && (
@@ -853,15 +937,30 @@ function ManualForm({
               <>
                 Seu palpite <span className="font-normal text-suave">(opcional)</span>
               </>
+            ) : sport === "volei" ? (
+              "Placar em sets"
             ) : (
               "Placar"
             )}
           </legend>
           <div className="mt-1 flex items-center gap-3">
-            <ScoreInput label="Gols do mandante" value={value.homeScore} onChange={(homeScore) => setValue((v) => ({ ...v, homeScore }))} invalid={!!errors.score} />
+            <ScoreInput
+              label={scoreFieldLabel(sport, "home")}
+              digits={scoreDigits(sport)}
+              value={value.homeScore}
+              onChange={(homeScore) => setValue((v) => ({ ...v, homeScore }))}
+              invalid={!!errors.score}
+            />
             <span className="font-display text-2xl text-suave">×</span>
-            <ScoreInput label="Gols do visitante" value={value.awayScore} onChange={(awayScore) => setValue((v) => ({ ...v, awayScore }))} invalid={!!errors.score} />
+            <ScoreInput
+              label={scoreFieldLabel(sport, "away")}
+              digits={scoreDigits(sport)}
+              value={value.awayScore}
+              onChange={(awayScore) => setValue((v) => ({ ...v, awayScore }))}
+              invalid={!!errors.score}
+            />
           </div>
+          {sport === "volei" && <p className="mt-1 text-xs text-suave">Melhor de 5 sets: o vencedor tem 3.</p>}
           {errors.score && <p className="mt-1 text-sm text-erro">{errors.score}</p>}
         </fieldset>
         <label className="flex flex-col gap-1">
@@ -873,7 +972,7 @@ function ManualForm({
             value={value.competition}
             maxLength={80}
             onChange={(e) => setValue((v) => ({ ...v, competition: e.target.value }))}
-            placeholder="Ex.: Copa do Brasil"
+            placeholder={SPORT_COPY[sport].competitionExample}
             className="min-h-12 rounded-xl border border-linha bg-white px-3 text-tinta outline-none placeholder:text-suave focus:border-estadio focus:ring-2 focus:ring-estadio/30"
           />
           <datalist id={listId}>
@@ -890,18 +989,32 @@ function ManualForm({
   );
 }
 
-export function ScoreInput({ label, value, onChange, invalid }: { label: string; value: string; onChange: (v: string) => void; invalid: boolean }) {
+export function ScoreInput({
+  label,
+  value,
+  onChange,
+  invalid,
+  digits = 2,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  invalid: boolean;
+  /** 3 no basquete (placar passa de 99); 1 no vôlei (sets). */
+  digits?: number;
+}) {
   return (
     <input
       aria-label={label}
       inputMode="numeric"
       pattern="[0-9]*"
-      maxLength={2}
+      maxLength={digits}
       value={value}
       aria-invalid={invalid || undefined}
-      onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 2))}
+      onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, digits))}
       className={cn(
-        "titulo-display h-14 w-16 rounded-xl border bg-white text-center text-3xl text-estadio outline-none focus:border-estadio focus:ring-2 focus:ring-estadio/30",
+        "titulo-display h-14 rounded-xl border bg-white text-center text-3xl text-estadio outline-none focus:border-estadio focus:ring-2 focus:ring-estadio/30",
+        digits > 2 ? "w-20" : "w-16",
         invalid ? "border-erro" : "border-linha",
       )}
     />
@@ -909,7 +1022,20 @@ export function ScoreInput({ label, value, onChange, invalid }: { label: string;
 }
 
 /** Campo de time com sugestões do catálogo; texto livre cria um time novo (vai para moderação). */
-export function TeamInput({ label, value, onChange, error }: { label: string; value: ManualTeam; onChange: (t: ManualTeam) => void; error?: string }) {
+export function TeamInput({
+  label,
+  value,
+  onChange,
+  error,
+  sport,
+}: {
+  label: string;
+  value: ManualTeam;
+  onChange: (t: ManualTeam) => void;
+  error?: string;
+  /** Só times desse esporte ("Minas" do vôlei ≠ "Minas" do basquete). */
+  sport?: Sport;
+}) {
   const id = useId();
   const [open, setOpen] = useState(false);
   const [options, setOptions] = useState<TeamRef[]>([]);
@@ -920,7 +1046,7 @@ export function TeamInput({ label, value, onChange, error }: { label: string; va
     if (value.id || q.length < 2) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      api<TeamRef[]>(`/api/teams/search?q=${encodeURIComponent(q)}`, { signal: controller.signal }).then(
+      api<TeamRef[]>(`/api/teams/search?q=${encodeURIComponent(q)}${sport ? `&esporte=${sport}` : ""}`, { signal: controller.signal }).then(
         (list) => {
           setOptions(list);
           setActive(-1);
@@ -932,7 +1058,7 @@ export function TeamInput({ label, value, onChange, error }: { label: string; va
       clearTimeout(timer);
       controller.abort();
     };
-  }, [value.name, value.id]);
+  }, [value.name, value.id, sport]);
 
   function choose(t: TeamRef) {
     onChange({ id: t.id, name: t.name, crestUrl: t.crestUrl });
@@ -964,7 +1090,7 @@ export function TeamInput({ label, value, onChange, error }: { label: string; va
           autoComplete="off"
           maxLength={80}
           value={value.name}
-          placeholder="Ex.: Flamengo"
+          placeholder={SPORT_COPY[sport ?? "futebol"].teamExample}
           onChange={(e) => {
             onChange({ id: null, name: e.target.value, crestUrl: null });
             setOpen(true);
@@ -1016,6 +1142,7 @@ export function TeamInput({ label, value, onChange, error }: { label: string; va
 
 function StepPhotos({
   stadium,
+  sport,
   kind,
   date,
   match,
@@ -1031,6 +1158,7 @@ function StepPhotos({
   onSubmit,
 }: {
   stadium: StadiumSummary;
+  sport: Sport;
   kind: Kind;
   date: string;
   match: MatchResult | null;
@@ -1092,10 +1220,10 @@ function StepPhotos({
                       {match.competition.name}
                       {isOpenMatch(match) && ` · começa ${formatKickoff(match.utcDate)}`}
                     </p>
-                    {isOpenMatch(match) && <GuessFields guess={guess} onGuess={onGuess} />}
+                    {isOpenMatch(match) && <GuessFields sport={sport} guess={guess} onGuess={onGuess} />}
                     {match.stadiumId && match.stadiumId !== stadium.id && (
                       <p className="mt-2 rounded-lg bg-partida px-3 py-2 text-sm text-tinta">
-                        Pelo nosso catálogo, essa partida foi em outro estádio. Confira se é o jogo certo ou volte e troque.
+                        Pelo nosso catálogo, essa partida foi em outro local. Confira se é o jogo certo ou volte e troque.
                       </p>
                     )}
                   </>
@@ -1219,7 +1347,8 @@ function Summary({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /** Palpite para a partida escolhida que ainda não terminou. */
-function GuessFields({ guess, onGuess }: { guess: Guess; onGuess: (g: Guess) => void }) {
+function GuessFields({ sport, guess, onGuess }: { sport: Sport; guess: Guess; onGuess: (g: Guess) => void }) {
+  const error = guessFilled(guess) ? predictionError(sport, Number(guess.home), Number(guess.away)) : null;
   return (
     <fieldset className="mt-3 flex flex-col items-center gap-2 rounded-lg bg-partida px-3 py-3">
       <legend className="sr-only">Seu palpite</legend>
@@ -1227,10 +1356,23 @@ function GuessFields({ guess, onGuess }: { guess: Guess; onGuess: (g: Guess) => 
         Seu palpite <span className="font-normal text-suave">(opcional)</span>
       </p>
       <div className="flex items-center gap-3">
-        <ScoreInput label="Palpite: gols do mandante" value={guess.home} onChange={(home) => onGuess({ ...guess, home })} invalid={false} />
+        <ScoreInput
+          label={`Palpite: ${scoreFieldLabel(sport, "home").toLowerCase()}`}
+          digits={scoreDigits(sport)}
+          value={guess.home}
+          onChange={(home) => onGuess({ ...guess, home })}
+          invalid={!!error}
+        />
         <span className="font-display text-2xl text-suave">×</span>
-        <ScoreInput label="Palpite: gols do visitante" value={guess.away} onChange={(away) => onGuess({ ...guess, away })} invalid={false} />
+        <ScoreInput
+          label={`Palpite: ${scoreFieldLabel(sport, "away").toLowerCase()}`}
+          digits={scoreDigits(sport)}
+          value={guess.away}
+          onChange={(away) => onGuess({ ...guess, away })}
+          invalid={!!error}
+        />
       </div>
+      {error && <p className="text-sm text-erro">{error} O palpite não será salvo assim.</p>}
       <p className="text-center text-xs text-suave">O jogo ainda não terminou: o resultado chega sozinho depois do fim e é comparado com o palpite.</p>
     </fieldset>
   );
@@ -1238,6 +1380,7 @@ function GuessFields({ guess, onGuess }: { guess: Guess; onGuess: (g: Guess) => 
 
 function PreviewCard({
   stadium,
+  sport,
   kind,
   date,
   match,
@@ -1245,6 +1388,7 @@ function PreviewCard({
   guess,
 }: {
   stadium: StadiumSummary | null;
+  sport: Sport;
   kind: Kind;
   date: string;
   match: MatchResult | null;
@@ -1262,12 +1406,12 @@ function PreviewCard({
         <Stamp name={stadium.name} place={where} photoUrl={stadium.thumbUrl} size={240} tone={kind === "match" ? "azul" : "verde"} />
       ) : (
         <div className="grid size-60 place-items-center rounded-full border-4 border-dashed border-estadio/30 p-6 text-suave">
-          Escolha o estádio para ver o carimbo
+          Escolha o {venueWord(sport)} para ver o carimbo
         </div>
       )}
       <div className="flex w-full flex-col items-center gap-2 border-t border-dashed border-linha pt-4">
         <span className={cn("rotulo-display rounded-md px-2 py-0.5 text-sm text-estadio", kind === "match" ? "bg-partida" : "bg-visita")}>
-          {kind === "match" ? "Partida" : "Visita"}
+          {kind === "match" ? `Partida · ${SPORT_INFO[sport].label}` : "Visita"}
         </span>
         <span className="font-display text-lg text-estadio">{date ? formatDay(date).toUpperCase() : "SEM DATA"}</span>
         {kind === "match" && (match || manual) && (
@@ -1287,5 +1431,161 @@ function PreviewCard({
         )}
       </div>
     </Ticket>
+  );
+}
+
+const VENUE_TYPE_LABEL: Record<VenueType, string> = { ginasio: "Ginásio", arena: "Arena", estadio: "Estádio" };
+
+/** Local que falta no catálogo: entra em análise e já pode receber o carimbo (só o autor vê até aprovar). */
+function NewVenueForm({
+  sport,
+  initialName,
+  onCancel,
+  onCreated,
+}: {
+  sport: Sport;
+  initialName: string;
+  onCancel: () => void;
+  onCreated: (s: StadiumSummary) => void;
+}) {
+  const [name, setName] = useState(initialName);
+  const [city, setCity] = useState("");
+  const [uf, setUf] = useState("");
+  const [venueType, setVenueType] = useState<VenueType>(sport === "futebol" ? "estadio" : "ginasio");
+  const [sports, setSports] = useState<Sport[]>([sport]);
+  const [here, setHere] = useState(false);
+  const [state, setState] = useState<{ busy: boolean; error: string | null; fields: Record<string, string> }>({ busy: false, error: null, fields: {} });
+  const nameId = useId();
+  const cityId = useId();
+  const ufId = useId();
+
+  async function position(): Promise<{ lat: number; lng: number } | null> {
+    if (!here || !("geolocation" in navigator)) return null;
+    return new Promise((resolve) =>
+      navigator.geolocation.getCurrentPosition(
+        (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
+      ),
+    );
+  }
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const fields: Record<string, string> = {};
+    if (name.trim().length < 3) fields.name = "Informe o nome do local.";
+    if (city.trim().length < 2) fields.city = "Informe a cidade.";
+    if (sports.length === 0) fields.sports = "Escolha pelo menos um esporte.";
+    if (Object.keys(fields).length) {
+      setState({ busy: false, error: null, fields });
+      return;
+    }
+    setState({ busy: true, error: null, fields: {} });
+    try {
+      const coords = await position();
+      const created = await api<StadiumSummary>("/api/catalog/stadiums", {
+        method: "POST",
+        json: { name: name.trim(), city: city.trim(), state: uf.trim() || null, sports, venueType, ...(coords ?? {}) },
+      });
+      onCreated(created);
+    } catch (error) {
+      const message = error instanceof ApiFailure ? Object.values(error.fields).flat()[0] ?? error.message : "Não foi possível cadastrar o local.";
+      setState({ busy: false, error: message, fields: {} });
+    }
+  }
+
+  const input =
+    "min-h-12 rounded-xl border bg-white px-3 text-tinta outline-none placeholder:text-suave focus:border-estadio focus:ring-2 focus:ring-estadio/30";
+  const chip =
+    "flex min-h-11 cursor-pointer items-center gap-2 rounded-full border-2 px-4 font-semibold text-estadio has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-estadio";
+  return (
+    <form onSubmit={submit} noValidate className="papel flex flex-col gap-4 rounded-2xl border border-linha p-4">
+      <div>
+        <h3 className="titulo-display text-2xl text-estadio">Cadastrar local</h3>
+        <p className="text-sm text-suave">Ele entra em análise e já pode receber seu carimbo. Só você vê até a aprovação.</p>
+      </div>
+      <label htmlFor={nameId} className="flex flex-col gap-1">
+        <span className="text-sm font-semibold text-estadio">Nome do local</span>
+        <input
+          id={nameId}
+          value={name}
+          maxLength={120}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Ex.: Ginásio Municipal Panela de Pressão"
+          aria-invalid={!!state.fields.name || undefined}
+          className={cn(input, state.fields.name ? "border-erro" : "border-linha")}
+        />
+        {state.fields.name && <span className="text-sm text-erro">{state.fields.name}</span>}
+      </label>
+      <div className="grid gap-3 sm:grid-cols-[1fr_7rem]">
+        <label htmlFor={cityId} className="flex flex-col gap-1">
+          <span className="text-sm font-semibold text-estadio">Cidade</span>
+          <input
+            id={cityId}
+            value={city}
+            maxLength={80}
+            onChange={(e) => setCity(e.target.value)}
+            placeholder="Ex.: Bauru"
+            aria-invalid={!!state.fields.city || undefined}
+            className={cn(input, state.fields.city ? "border-erro" : "border-linha")}
+          />
+          {state.fields.city && <span className="text-sm text-erro">{state.fields.city}</span>}
+        </label>
+        <label htmlFor={ufId} className="flex flex-col gap-1">
+          <span className="text-sm font-semibold text-estadio">
+            UF <span className="font-normal text-suave">(opcional)</span>
+          </span>
+          <input id={ufId} value={uf} maxLength={40} onChange={(e) => setUf(e.target.value)} placeholder="SP" className={cn(input, "border-linha")} />
+        </label>
+      </div>
+      <fieldset>
+        <legend className="text-sm font-semibold text-estadio">Tipo</legend>
+        <div className="mt-1 flex flex-wrap gap-2">
+          {(Object.keys(VENUE_TYPE_LABEL) as VenueType[]).map((t) => (
+            <label key={t} className={cn(chip, venueType === t ? "border-estadio bg-ingresso" : "border-estadio/20 bg-white")}>
+              <input type="radio" name="tipo-local" checked={venueType === t} onChange={() => setVenueType(t)} className="sr-only" />
+              {VENUE_TYPE_LABEL[t]}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend className="text-sm font-semibold text-estadio">Esportes jogados aqui</legend>
+        <div className="mt-1 flex flex-wrap gap-2">
+          {(Object.keys(SPORT_INFO) as Sport[]).map((s) => {
+            const checked = sports.includes(s);
+            return (
+              <label key={s} className={cn(chip, checked ? "border-estadio bg-ingresso" : "border-estadio/20 bg-white")}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => setSports((list) => (checked ? list.filter((x) => x !== s) : [...list, s]))}
+                  className="sr-only"
+                />
+                <KitIcon name={SPORT_INFO[s].icon} size={20} />
+                {SPORT_INFO[s].label}
+              </label>
+            );
+          })}
+        </div>
+        {state.fields.sports && <p className="mt-1 text-sm text-erro">{state.fields.sports}</p>}
+      </fieldset>
+      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-linha bg-white p-3">
+        <input type="checkbox" checked={here} onChange={(e) => setHere(e.target.checked)} className="mt-0.5 size-5 shrink-0 accent-[var(--color-estadio)]" />
+        <span>
+          <span className="block font-semibold text-estadio">Estou no local agora</span>
+          <span className="block text-sm text-suave">Usa sua localização para marcar o local no mapa. Sem isso, usamos o centro da cidade.</span>
+        </span>
+      </label>
+      <div aria-live="polite">{state.error && <p className="text-sm text-erro">{state.error}</p>}</div>
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button type="button" variant="secundario" onClick={onCancel} disabled={state.busy}>
+          Cancelar
+        </Button>
+        <Button type="submit" disabled={state.busy}>
+          {state.busy ? "Cadastrando…" : "Cadastrar e usar"}
+        </Button>
+      </div>
+    </form>
   );
 }

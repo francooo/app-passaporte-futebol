@@ -18,7 +18,7 @@ export default function MapaPage({ searchParams }: PageProps<"/app/mapa">) {
       <div className="flex items-end justify-between gap-4">
         <div>
           <h1 className="titulo-display text-4xl text-estadio lg:text-6xl">Mapa dos estádios</h1>
-          <p className="mt-1 text-suave lg:mt-3 lg:text-lg">Explore o futebol pelo mundo</p>
+          <p className="mt-1 text-suave lg:mt-3 lg:text-lg">Explore estádios e arenas pelo mundo</p>
         </div>
       </div>
       <Suspense fallback={<MapaSkeleton />}>

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SPORT_INFO } from "@shared/sports";
 import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
 import { StadiumThumb } from "@/components/catalog/stadium-bits";
@@ -44,12 +45,23 @@ async function Stats({ searchParams }: Pick<PageProps<"/app/estatisticas">, "sea
     );
   }
 
+  const multi = s.bySport.some((b) => b.sport !== "futebol");
   return (
     <>
       <ul className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-5">
         <Tile icon="globe" value={s.countries} label={s.countries === 1 ? "país" : "países"} />
-        <Tile icon="stadium" value={s.stadiums} label={s.stadiums === 1 ? "estádio" : "estádios"} />
-        <Tile icon="football" value={s.matches} label={s.matches === 1 ? "partida" : "partidas"} />
+        {/* Com outros esportes: "locais" (ginásios e arenas) e as partidas separadas por esporte */}
+        <Tile
+          icon={multi ? "arena" : "stadium"}
+          value={s.stadiums}
+          label={multi ? (s.stadiums === 1 ? "local" : "locais") : s.stadiums === 1 ? "estádio" : "estádios"}
+        />
+        <Tile
+          icon={multi ? "trophy" : "football"}
+          value={s.matches}
+          label={s.matches === 1 ? "partida" : "partidas"}
+          hint={multi ? s.bySport.map((b) => `${b.matches} ${SPORT_INFO[b.sport].label.toLowerCase()}`).join(" · ") : undefined}
+        />
         {s.km != null ? (
           <Tile icon="plane" value={s.km} label="km viajados" hint={`ida e volta a partir de ${s.homeCity?.split(",")[0]}`} />
         ) : (
@@ -103,11 +115,11 @@ async function Stats({ searchParams }: Pick<PageProps<"/app/estatisticas">, "sea
               <p className="text-xs text-suave">Nas partidas que você registrou com esse time em campo.</p>
             </div>
           ) : (
-            <p className="text-suave">Registre partidas para ver o desempenho do seu time quando você está no estádio.</p>
+            <p className="text-suave">Registre partidas de futebol para ver o desempenho do seu time quando você está no estádio.</p>
           )}
         </Panel>
 
-        <Panel title="Maiores estádios que você visitou" subtitle="Ranking por capacidade">
+        <Panel title={multi ? "Maiores locais que você visitou" : "Maiores estádios que você visitou"} subtitle="Ranking por capacidade">
           {s.biggestStadiums.length ? (
             <ol className="flex flex-col gap-2">
               {s.biggestStadiums.map((st, i) => (
@@ -128,7 +140,7 @@ async function Stats({ searchParams }: Pick<PageProps<"/app/estatisticas">, "sea
               ))}
             </ol>
           ) : (
-            <p className="text-suave">Os estádios que você registrou não têm capacidade informada.</p>
+            <p className="text-suave">Os locais que você registrou não têm capacidade informada.</p>
           )}
         </Panel>
       </div>
@@ -163,7 +175,7 @@ function Tile({ icon, value, label, hint }: { icon: KitIconName; value: number; 
         <div className="min-w-0">
           <p className="titulo-display text-4xl tabular-nums text-estadio lg:text-5xl">{number.format(value)}</p>
           <p className="font-display text-lg text-tinta lg:text-xl">{label}</p>
-          {hint && <p className="truncate text-xs text-suave">{hint}</p>}
+          {hint && <p className="line-clamp-2 text-xs text-suave">{hint}</p>}
         </div>
       </div>
     </li>

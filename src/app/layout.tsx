@@ -20,7 +20,7 @@ export const metadata: Metadata = {
     template: "%s · Passaporte Esportivo",
   },
   description:
-    "Registre estádios, partidas e visitas e colecione carimbos no seu passaporte do futebol.",
+    "Registre estádios, ginásios, partidas e visitas de futebol, vôlei, basquete e futsal e colecione carimbos no seu passaporte esportivo.",
   applicationName: "Passaporte Esportivo",
   icons: { icon: "/icon.svg", apple: "/icon.svg" },
   appleWebApp: { capable: true, title: "Passaporte", statusBarStyle: "default" },

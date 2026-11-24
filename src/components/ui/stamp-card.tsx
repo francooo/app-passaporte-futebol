@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { TeamRef } from "@shared/api-types";
+import { SPORT_INFO, type Sport } from "@shared/sports";
 import { TeamCrest } from "@/components/visits/team-crest";
 import { cn } from "@/lib/cn";
 import { KitIcon } from "./kit-icon";
@@ -31,6 +32,8 @@ type Props = {
   tag?: string | null;
   match?: StampMatch | null;
   competition?: string | null;
+  /** Esporte do carimbo (ícone e rótulo); padrão: futebol. */
+  sport?: Sport;
   className?: string;
 };
 
@@ -45,12 +48,18 @@ function formatStampDate(date: Date | null) {
   return dateFormat.format(date).replace(/\./g, "").replace(/ de /g, " ").toUpperCase();
 }
 
-/** Ícone, tipo escrito e data (sem `date`, só o tipo: a listagem já mostra a data à esquerda). */
-function KindBadge({ kind, date, icon = true }: { kind: VisitKind; date?: Date | null; icon?: boolean }) {
+/** Ícone do esporte (ou do local, na visita), tipo escrito e data (sem `date`, só o tipo: a listagem já mostra a data à esquerda). */
+function KindBadge({ kind, sport = "futebol", date, icon = true }: { kind: VisitKind; sport?: Sport; date?: Date | null; icon?: boolean }) {
   const isMatch = kind === "match";
   return (
     <>
-      {icon && <KitIcon name={isMatch ? "football" : "stadium"} size={34} />}
+      {icon && (
+        <KitIcon
+          name={isMatch ? SPORT_INFO[sport].icon : sport === "futebol" ? "stadium" : "arena"}
+          size={34}
+          label={isMatch ? SPORT_INFO[sport].label : undefined}
+        />
+      )}
       <span
         className={cn(
           "rotulo-display rounded-md px-2 py-0.5 text-sm text-estadio",
@@ -59,6 +68,7 @@ function KindBadge({ kind, date, icon = true }: { kind: VisitKind; date?: Date |
       >
         {isMatch ? "Partida" : "Visita"}
       </span>
+      {isMatch && sport !== "futebol" && !icon && <span className="text-xs font-semibold text-suave">{SPORT_INFO[sport].label}</span>}
       {date !== undefined && <span className="font-display text-sm font-medium text-estadio">{formatStampDate(date)}</span>}
     </>
   );
@@ -118,7 +128,9 @@ function DateBlock({ date }: { date: Date | null }) {
 }
 
 /** Carimbo do "Meu Passaporte": selo, estádio/cidade, confronto (partidas), tipo escrito e data. */
-export function StampCard({ href, stadium, city, stateCode, kind, date, photoUrl, tone, layout = "row", tag, match, competition, className }: Props) {
+export function StampCard({ href, stadium, city, stateCode, kind, date, photoUrl, tone, layout = "row", tag, match, competition, sport = "futebol", className }: Props) {
+  // Outros esportes: o rótulo do esporte acompanha a competição (o ícone já aparece no selo do tipo)
+  const contest = sport === "futebol" ? competition : [SPORT_INFO[sport].label, competition].filter(Boolean).join(" · ");
   const place = stateCode ? `${city} - ${stateCode}` : city;
   const card = "papel rounded-2xl border border-estadio/10 shadow-sm transition-transform hover:-translate-y-0.5";
 
@@ -150,17 +162,17 @@ export function StampCard({ href, stadium, city, stateCode, kind, date, photoUrl
           )}
           {/* No celular, local (e etiqueta) logo abaixo do confronto */}
           <p className="mt-1 truncate text-center text-sm text-suave md:hidden">
-            {match ? `${stadium} · ${city}` : city}
+            {match ? `${stadium} · ${sport === "futebol" ? city : SPORT_INFO[sport].label}` : city}
           </p>
           {tag && <p className="text-center md:hidden"><Tag text={tag} /></p>}
         </div>
         <div className="hidden min-w-0 md:block">
           <p className="truncate font-semibold text-estadio">{match ? stadium : city}</p>
-          <p className="truncate text-sm text-suave">{match ? (competition ?? city) : "Visita ao estádio"}</p>
+          <p className="truncate text-sm text-suave">{match ? (contest || city) : sport === "futebol" ? "Visita ao estádio" : "Visita ao local"}</p>
           {tag && <Tag text={tag} />}
         </div>
         <div className="hidden flex-col items-center gap-1 md:flex">
-          <KindBadge kind={kind} icon={false} />
+          <KindBadge kind={kind} sport={sport} icon={false} />
         </div>
         <KitIcon name="arrow-right" size={20} />
       </Link>
@@ -181,7 +193,7 @@ export function StampCard({ href, stadium, city, stateCode, kind, date, photoUrl
           {tag && <Tag text={tag} />}
         </div>
         <div className="mt-auto flex w-full items-center justify-center gap-3 border-t border-dashed border-linha pt-4">
-          <KindBadge kind={kind} date={date} />
+          <KindBadge kind={kind} sport={sport} date={date} />
         </div>
       </Link>
     );
@@ -199,7 +211,7 @@ export function StampCard({ href, stadium, city, stateCode, kind, date, photoUrl
         {tag && <Tag text={tag} />}
       </div>
       <div className="flex w-[5.5rem] flex-col items-center gap-1 text-center">
-        <KindBadge kind={kind} date={date} />
+        <KindBadge kind={kind} sport={sport} date={date} />
       </div>
       <KitIcon name="arrow-right" size={20} />
       {match && <MatchLine match={match} crest={24} className="col-span-full border-t border-dashed border-linha pt-2" />}

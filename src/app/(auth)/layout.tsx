@@ -19,7 +19,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
         <div>
           <h2 className="titulo-display max-w-lg text-6xl uppercase text-marfim xl:text-7xl">
-            Futebol conecta pessoas a lugares <span className="text-ingresso">incríveis</span>
+            Esporte conecta pessoas a lugares <span className="text-ingresso">incríveis</span>
           </h2>
           <p className="mt-6 max-w-md text-lg text-marfim/80">
             Registre estádios, partidas e visitas. Cada estádio vira um carimbo no seu passaporte.
@@ -28,7 +28,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
         <div className="flex items-end justify-between gap-6">
           <p className="titulo-display text-3xl uppercase text-ingresso">
-            Mais que futebol
+            Mais que um jogo
             <br />
             mais histórias
           </p>
@@ -41,7 +41,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
       {/* Coluna do formulário */}
       <div className="relative flex flex-1 flex-col lg:papel lg:justify-center">
         <header className="px-6 pt-[max(1.5rem,env(safe-area-inset-top))] text-center lg:hidden">
-          <p className="rotulo-display text-sm text-ingresso">Futebol conecta pessoas a lugares incríveis</p>
+          <p className="rotulo-display text-sm text-ingresso">Esporte conecta pessoas a lugares incríveis</p>
         </header>
 
         <main className="mx-auto w-full max-w-md flex-1 px-4 py-6 lg:flex-none lg:py-12">
@@ -54,7 +54,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
         <footer className="px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] lg:hidden">
           <p className="titulo-display text-xl uppercase text-ingresso">
-            Mais que futebol
+            Mais que um jogo
             <br />
             mais histórias
           </p>

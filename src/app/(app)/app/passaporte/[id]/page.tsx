@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SPORT_INFO } from "@shared/sports";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
@@ -49,7 +50,7 @@ async function Carimbo({ params, searchParams }: PageProps<"/app/passaporte/[id]
           <Stamp name={v.stadium.name} place={where} photoUrl={v.stadium.thumbUrl} tone={isMatch ? "azul" : "verde"} size={260} />
           <div className="flex w-full flex-col items-center gap-2 border-t border-dashed border-linha pt-4">
             <span className={cn("rotulo-display rounded-md px-2 py-0.5 text-sm text-estadio", isMatch ? "bg-partida" : "bg-visita")}>
-              {isMatch ? "Partida" : "Visita"}
+              {isMatch ? `Partida · ${SPORT_INFO[v.sport].label}` : "Visita"}
             </span>
             <span className="font-display text-xl text-estadio">{formatDay(v.date).toUpperCase()}</span>
           </div>
@@ -62,7 +63,7 @@ async function Carimbo({ params, searchParams }: PageProps<"/app/passaporte/[id]
               <KitIcon name="location-pin" size={20} /> {where} · {v.stadium.country}
             </p>
             <Link href={`/app/estadios/${v.stadium.id}`} className="mt-2 inline-block text-sm font-semibold text-estadio underline underline-offset-4">
-              Ver página do estádio
+              Ver página do {v.sport === "futebol" ? "estádio" : "local"}
             </Link>
           </div>
 

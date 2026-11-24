@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { parseSport, SPORT_INFO } from "@shared/sports";
 import Link from "next/link";
 import { Suspense } from "react";
 import { ButtonLink } from "@/components/ui/button";
@@ -14,7 +15,7 @@ export const metadata: Metadata = { title: "Meu Passaporte" };
 
 type Search = Awaited<PageProps<"/app/passaporte">["searchParams"]>;
 
-function Counters({ stamps, stadiums, className }: { stamps: number; stadiums: number; className?: string }) {
+function Counters({ stamps, stadiums, venueWord, className }: { stamps: number; stadiums: number; venueWord: [string, string]; className?: string }) {
   return (
     <dl className={cn("grid grid-cols-2", className)}>
       <div className="flex flex-row-reverse items-baseline justify-center gap-2 border-r border-linha">
@@ -22,7 +23,7 @@ function Counters({ stamps, stadiums, className }: { stamps: number; stadiums: n
         <dd className="titulo-display text-5xl text-estadio lg:text-6xl">{stamps}</dd>
       </div>
       <div className="flex flex-row-reverse items-baseline justify-center gap-2">
-        <dt className="font-display text-xl text-estadio">{stadiums === 1 ? "estádio" : "estádios"}</dt>
+        <dt className="font-display text-xl text-estadio">{stadiums === 1 ? venueWord[0] : venueWord[1]}</dt>
         <dd className="titulo-display text-5xl text-estadio lg:text-6xl">{stadiums}</dd>
       </div>
     </dl>
@@ -83,19 +84,23 @@ async function Collection({ searchParams }: Pick<PageProps<"/app/passaporte">, "
   const tipo = one(params.tipo);
   const ano = Number(one(params.ano));
   const competicao = one(params.competicao)?.slice(0, 80);
+  const esporte = parseSport(one(params.esporte));
 
   const list = await listVisits(user.id, {
     kind: tipo === "partida" ? "match" : tipo === "visita" ? "visit" : null,
     year: Number.isInteger(ano) && ano > 1800 ? ano : null,
     competition: competicao || null,
+    sport: esporte,
   });
-  const filtered = Boolean(tipo || one(params.ano) || competicao);
+  const filtered = Boolean(tipo || one(params.ano) || competicao || esporte);
+  // Só futebol: "estádios"; com outros esportes: "locais" (ginásios e arenas)
+  const onlyFootball = list.sports.every((s) => s === "futebol");
   const view = one(params.ver) === "lista" ? "lista" : "blocos";
 
   // Monta o link mantendo os outros filtros (e o modo de exibição)
   const hrefWith = (changes: Record<string, string | null>) => {
     const next = new URLSearchParams();
-    const current: Record<string, string | null | undefined> = { tipo, ano: one(params.ano), competicao, ver: view === "lista" ? "lista" : null };
+    const current: Record<string, string | null | undefined> = { esporte, tipo, ano: one(params.ano), competicao, ver: view === "lista" ? "lista" : null };
     for (const [key, value] of Object.entries({ ...current, ...changes })) if (value) next.set(key, value);
     return `/app/passaporte${next.size ? `?${next}` : ""}`;
   };
@@ -109,11 +114,16 @@ async function Collection({ searchParams }: Pick<PageProps<"/app/passaporte">, "
   return (
     <>
       <Ticket orientation="horizontal" innerClassName="flex flex-col items-center gap-4 py-4 sm:flex-row sm:justify-between lg:px-10 lg:py-6">
-        <Counters stamps={list.totals.stamps} stadiums={list.totals.stadiums} className="w-full gap-6 sm:w-auto [&>div:first-child]:pr-6" />
+        <Counters
+          stamps={list.totals.stamps}
+          stadiums={list.totals.stadiums}
+          venueWord={onlyFootball ? ["estádio", "estádios"] : ["local", "locais"]}
+          className="w-full gap-6 sm:w-auto [&>div:first-child]:pr-6"
+        />
         <div className="hidden items-center gap-4 sm:flex">
           <div className="picote h-14 w-2" aria-hidden />
           <p className="rotulo-display text-sm leading-tight text-estadio">
-            Futebol
+            {onlyFootball ? "Futebol" : "Esporte"}
             <br />
             conecta
             <br />
@@ -122,6 +132,30 @@ async function Collection({ searchParams }: Pick<PageProps<"/app/passaporte">, "
           <KitIcon name="football-postmark" size={88} className="h-auto" />
         </div>
       </Ticket>
+
+      {list.sports.length > 1 && (
+        <nav aria-label="Esporte" className="flex flex-wrap gap-2">
+          {[null, ...list.sports].map((s) => {
+            const active = (esporte ?? null) === s;
+            return (
+              <Link
+                key={s ?? "todos"}
+                // Trocar de esporte limpa a competição (as competições mudam com o esporte)
+                href={hrefWith({ esporte: s, competicao: null })}
+                scroll={false}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "inline-flex min-h-12 items-center justify-center gap-2 rounded-full border px-4 font-display text-lg",
+                  active ? "border-ingresso bg-ingresso font-semibold text-estadio" : "border-estadio/30 bg-white text-estadio hover:bg-partida/50",
+                )}
+              >
+                {s && <KitIcon name={SPORT_INFO[s].icon} size={22} />}
+                {s ? SPORT_INFO[s].label : "Todos os esportes"}
+              </Link>
+            );
+          })}
+        </nav>
+      )}
 
       {list.totals.stamps > 0 && (
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -194,7 +228,7 @@ async function Collection({ searchParams }: Pick<PageProps<"/app/passaporte">, "
           <p className="max-w-md text-suave">
             {filtered
               ? "Mude os filtros ou veja todos os carimbos."
-              : "Registre a primeira visita a um estádio ou uma partida que você assistiu ao vivo."}
+              : "Registre a primeira visita a um estádio ou ginásio, ou uma partida que você assistiu ao vivo."}
           </p>
           {filtered && (
             <Link href="/app/passaporte" className="font-semibold text-estadio underline underline-offset-4">
@@ -206,7 +240,7 @@ async function Collection({ searchParams }: Pick<PageProps<"/app/passaporte">, "
 
       <div className="flex flex-col gap-4 rounded-2xl border border-linha bg-white/70 p-4 sm:flex-row sm:items-center sm:justify-between lg:p-6">
         <p className="text-tinta">
-          <span className="font-display text-lg font-semibold text-estadio">Cada ida ao estádio vira lembrança.</span>
+          <span className="font-display text-lg font-semibold text-estadio">Cada ida ao estádio ou ao ginásio vira lembrança.</span>
           <br className="hidden sm:block" /> Registre visitas e partidas para completar sua coleção.
         </p>
         <ButtonLink href="/app/registrar" className="shrink-0 lg:min-w-72" icon={<KitIcon name="camera-ai" size={28} />}>

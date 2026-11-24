@@ -22,7 +22,7 @@ export default function HomePage() {
             <br />
             Colecionar
             <br />
-            Viver o futebol
+            Viver o esporte
           </p>
       </div>
 
@@ -104,7 +104,7 @@ async function Passport() {
                 <dd className="titulo-display text-5xl text-estadio lg:text-6xl">{list.totals.stamps}</dd>
               </div>
               <div className="flex flex-col-reverse pl-6">
-                <dt className="font-display text-lg text-estadio">{list.totals.stadiums === 1 ? "estádio" : "estádios"}</dt>
+                <dt className="font-display text-lg text-estadio">{list.sports.some((s) => s !== "futebol") ? (list.totals.stadiums === 1 ? "local" : "locais") : list.totals.stadiums === 1 ? "estádio" : "estádios"}</dt>
                 <dd className="titulo-display text-5xl text-estadio lg:text-6xl">{list.totals.stadiums}</dd>
               </div>
             </dl>
@@ -149,7 +149,7 @@ async function Passport() {
               <KitIcon name="stamp-visita" size={48} />
               <div>
                 <p className="titulo-display text-2xl text-estadio">Seu passaporte está em branco</p>
-                <p className="text-suave">Registre a primeira visita a um estádio ou uma partida que você viu ao vivo.</p>
+                <p className="text-suave">Registre a primeira visita a um estádio ou ginásio, ou uma partida que você viu ao vivo.</p>
               </div>
             </div>
             <ButtonLink href="/app/registrar" className="shrink-0" icon={<KitIcon name="camera-ai" size={26} />}>

@@ -2,9 +2,11 @@ import Image from "next/image";
 
 /** Ícones SVG do kit v05 (public/icons). */
 export type KitIconName =
+  | "arena"
   | "arrow-right"
   | "back"
   | "bandeira-argentina"
+  | "basketball"
   | "calendar"
   | "camera-ai"
   | "crest-stamp"
@@ -12,6 +14,7 @@ export type KitIconName =
   | "eye"
   | "football"
   | "football-postmark"
+  | "futsal"
   | "globe"
   | "home"
   | "location-pin"
@@ -27,7 +30,8 @@ export type KitIconName =
   | "stamp-visita"
   | "stats"
   | "trash"
-  | "trophy";
+  | "trophy"
+  | "volleyball";
 
 type Props = {
   name: KitIconName;

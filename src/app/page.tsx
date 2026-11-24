@@ -47,10 +47,10 @@ function Pitch({ large = false }: { large?: boolean }) {
   return (
     <>
       <p className={large ? "font-display text-4xl tracking-wide text-estadio" : "font-display text-2xl tracking-wide text-estadio"}>
-        Mais que futebol, mais histórias.
+        Mais que um jogo, mais histórias.
       </p>
       <p className={large ? "max-w-lg text-lg text-tinta" : "text-tinta"}>
-        Registre estádios, partidas e visitas. Cada estádio vira um carimbo no seu passaporte.
+        Registre estádios, ginásios, partidas e visitas: futebol, vôlei, basquete e futsal. Cada lugar vira um carimbo no seu passaporte.
       </p>
       <div className={large ? "flex gap-4" : "flex w-full flex-col gap-3"}>
         <ButtonLink href="/cadastro" className={large ? "px-8" : undefined}>
