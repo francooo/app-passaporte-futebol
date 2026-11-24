@@ -58,10 +58,27 @@ async function get<T>(path: string): Promise<T[]> {
   return body.response ?? [];
 }
 
+const DAY_CACHE_MS = 10 * 60_000;
+const dayCache = new Map<string, { at: number; fixtures: Promise<AfFixture[]> }>();
+
+function fixturesOfDay(date: string) {
+  const hit = dayCache.get(date);
+  if (hit && Date.now() - hit.at < DAY_CACHE_MS) return hit.fixtures;
+  const fixtures = get<AfFixture>(`/fixtures?date=${date}&timezone=UTC`);
+  dayCache.set(date, { at: Date.now(), fixtures });
+  fixtures.catch(() => dayCache.delete(date));
+  return fixtures;
+}
+
 export const apiFootball = {
   /** Times pelo nome (mínimo 3 letras, sem acentos). */
   searchTeams: (name: string) => get<{ team: AfTeam }>(`/teams?search=${encodeURIComponent(name)}`).then((r) => r.map((x) => x.team)),
-  /** Jogos do time num dia ("AAAA-MM-DD", UTC). */
-  fixturesOn: (teamId: string, date: string) => get<AfFixture>(`/fixtures?team=${encodeURIComponent(teamId)}&date=${date}&timezone=UTC`),
+  /**
+   * Jogos do time num dia ("AAAA-MM-DD", UTC). O plano gratuito não aceita `team=` (exige a temporada, e a
+   * atual é bloqueada), mas aceita `date=` sozinho entre ontem e amanhã: busca o dia inteiro (1 requisição,
+   * guardada por 10 min para as outras visitas do mesmo dia) e filtra pelo time.
+   */
+  fixturesOn: async (teamId: string, date: string) =>
+    (await fixturesOfDay(date)).filter((f) => String(f.teams.home.id) === teamId || String(f.teams.away.id) === teamId),
   fixture: (id: string) => get<AfFixture>(`/fixtures?id=${encodeURIComponent(id)}`).then((r) => r[0] ?? null),
 };

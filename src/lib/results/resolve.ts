@@ -123,11 +123,15 @@ async function resolveFromFootballData(v: Pending) {
   return false;
 }
 
+const AF_DATE_WINDOW_MS = 30 * 60 * 60 * 1000;
+
 /** Preenchimento manual: acha o jogo na API-Football (time + dia) e lê o placar. */
 async function resolveFromApiFootball(v: Pending) {
   if (!apiFootballEnabled() || !v.homeTeamId) return false;
 
   let fixtureId = v.externalFixtureId;
+  // O plano gratuito só busca jogos por data entre ontem e amanhã: depois disso, nem tenta (poupa a cota)
+  if (!fixtureId && Date.now() - v.kickoffAt.getTime() > AF_DATE_WINDOW_MS) return false;
   if (!fixtureId) {
     const teamIds = [v.homeTeamId, v.awayTeamId].filter((id): id is string => Boolean(id));
     const local = await db
