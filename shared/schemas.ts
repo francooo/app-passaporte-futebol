@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DEFAULT_SPORT, predictionError, scoreError, SPORTS } from "./sports";
+import { DEFAULT_SPORT, predictionError, scoreError, SPORTS, VENUE_TYPES } from "./sports";
 
 /** Validações de conta — usadas pelas Server Actions do web, pela API mobile e pelo app. */
 
@@ -128,6 +128,26 @@ export type ResultInput = z.input<typeof resultSchema>;
 /** Palpite, editável enquanto o resultado não sai. */
 export const predictionSchema = z.object({ predictedHomeScore: score, predictedAwayScore: score });
 export type PredictionInput = z.input<typeof predictionSchema>;
+
+/** Local cadastrado pelo usuário quando não está no catálogo (fica em moderação; só o autor vê até aprovar). */
+export const venueSchema = z.object({
+  name: z.string().trim().min(3, "Informe o nome do local.").max(120),
+  city: z.string().trim().min(2, "Informe a cidade.").max(80),
+  state: optionalText(40),
+  country: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z]{3}$/, "País inválido.")
+    .default("BRA"),
+  sports: z.array(z.enum(SPORTS)).min(1, "Escolha pelo menos um esporte.").max(SPORTS.length),
+  venueType: z.enum(VENUE_TYPES).default("ginasio"),
+  /** Localização opcional (GPS do aparelho no local). */
+  lat: z.number().min(-90).max(90).nullish(),
+  lng: z.number().min(-180).max(180).nullish(),
+});
+
+export type VenueInput = z.input<typeof venueSchema>;
 
 /** Perfil: cidade onde mora (base dos km viajados) e time do coração. */
 export const profileSchema = z.object({

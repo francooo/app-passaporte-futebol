@@ -19,7 +19,7 @@ export const PAGE_SIZE = 30;
 
 const capacityExpr = sql<number | null>`coalesce(${stadiums.capacityOverride}, ${stadiums.capacity})`;
 
-const summaryColumns = {
+export const summaryColumns = {
   id: stadiums.id,
   name: stadiums.name,
   city: stadiums.city,
@@ -31,6 +31,7 @@ const summaryColumns = {
   photoUrl: stadiums.photoUrl,
   sports: stadiums.sports,
   venueType: stadiums.venueType,
+  status: stadiums.status,
 };
 
 type SummaryRow = {
@@ -45,9 +46,10 @@ type SummaryRow = {
   photoUrl: string | null;
   sports: Sport[];
   venueType: VenueType;
+  status?: "approved" | "pending" | "rejected";
 };
 
-function toSummary(r: SummaryRow): StadiumSummary {
+export function toSummary(r: SummaryRow): StadiumSummary {
   return {
     id: r.id,
     name: r.name,
@@ -60,6 +62,7 @@ function toSummary(r: SummaryRow): StadiumSummary {
     thumbUrl: commonsThumb(r.photoUrl, 330),
     sports: r.sports,
     venueType: r.venueType,
+    ...(r.status === "pending" ? { pending: true } : {}),
   };
 }
 
@@ -79,6 +82,10 @@ async function withNextMatch(items: StadiumSummary[]): Promise<StadiumSummary[]>
 }
 
 const visible = and(eq(stadiums.status, "approved"), hasUsefulData);
+
+/** Catálogo aprovado + os locais que o próprio usuário cadastrou (em moderação). */
+const visibleFor = (userId?: string | null) =>
+  userId ? or(visible, and(eq(stadiums.status, "pending"), eq(stadiums.createdBy, userId))) : visible;
 
 /** Nome ou cidade, sem diferenciar acentos ("maracana" encontra "Maracanã"). */
 const nameOrCity = (term: string) =>
@@ -206,13 +213,13 @@ export async function listPhotoCredits({ page = 0, pageSize = 100 } = {}) {
 }
 
 /** Busca global (todos os países) para escolher o estádio do registro. */
-export async function searchStadiums(q: string, limit = 20, sport?: Sport | null): Promise<StadiumSummary[]> {
+export async function searchStadiums(q: string, limit = 20, sport?: Sport | null, userId?: string | null): Promise<StadiumSummary[]> {
   const term = q.trim();
   if (term.length < 2) return [];
   const rows = await db
     .select(summaryColumns)
     .from(stadiums)
-    .where(and(visible, nameOrCity(term), playsSport(sport)))
+    .where(and(visibleFor(userId), nameOrCity(term), playsSport(sport)))
     .orderBy(sql`${capacityExpr} desc nulls last`, asc(stadiums.name))
     .limit(limit);
   return withNextMatch(rows.map(toSummary));
@@ -222,7 +229,14 @@ export async function searchStadiums(q: string, limit = 20, sport?: Sport | null
  * Estádios num raio (km) a partir de uma coordenada, do mais perto para o mais longe.
  * A coordenada do usuário só é usada nesta consulta (não é gravada).
  */
-export async function nearbyStadiums(lat: number, lng: number, radiusKm = 100, limit = 20, sport?: Sport | null): Promise<NearbyStadium[]> {
+export async function nearbyStadiums(
+  lat: number,
+  lng: number,
+  radiusKm = 100,
+  limit = 20,
+  sport?: Sport | null,
+  userId?: string | null,
+): Promise<NearbyStadium[]> {
   const dLat = radiusKm / 111;
   const dLng = radiusKm / (111 * Math.max(Math.cos((lat * Math.PI) / 180), 0.01));
   const distance = sql<number>`6371 * 2 * asin(sqrt(
@@ -234,7 +248,7 @@ export async function nearbyStadiums(lat: number, lng: number, radiusKm = 100, l
     .from(stadiums)
     .where(
       and(
-        visible,
+        visibleFor(userId),
         // Caixa delimitadora antes do cálculo exato (usa só faixas de lat/lng)
         sql`${stadiums.lat} between ${lat - dLat} and ${lat + dLat}`,
         sql`${stadiums.lng} between ${lng - dLng} and ${lng + dLng}`,

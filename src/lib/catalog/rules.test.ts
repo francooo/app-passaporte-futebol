@@ -6,6 +6,7 @@ import {
   mapCountryId,
   pickCapacity,
   resolvePlace,
+  venueSports,
   type PlaceNode,
 } from "./rules";
 
@@ -122,5 +123,27 @@ describe("commonsThumb", () => {
       ),
     ).toBe("https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a4/Maracana_2022.jpg/330px-Maracana_2022.jpg");
     expect(commonsThumb(null, 330)).toBeNull();
+  });
+});
+
+describe("venueSports", () => {
+  const base = { football: false, indoor: false, gym: false, onlyShows: false, footballSport: false };
+
+  it("estádio de futebol fica só com o futebol", () => {
+    expect(venueSports({ ...base, football: true, indoor: true })).toEqual({ sports: ["futebol"], venueType: "estadio" });
+  });
+
+  it("ginásio e arena recebem vôlei, basquete e futsal", () => {
+    expect(venueSports({ ...base, indoor: true, gym: true })).toEqual({ sports: ["volei", "basquete", "futsal"], venueType: "ginasio" });
+    expect(venueSports({ ...base, indoor: true })?.venueType).toBe("arena");
+  });
+
+  it("casa de shows fica de fora", () => {
+    expect(venueSports({ ...base, indoor: true, onlyShows: true })).toBeNull();
+  });
+
+  it("arena grande com esporte = futebol é estádio (Arena Barueri), a pequena continua arena (Maracanãzinho)", () => {
+    expect(venueSports({ ...base, indoor: true, footballSport: true }, 35000)?.venueType).toBe("estadio");
+    expect(venueSports({ ...base, indoor: true, footballSport: true }, 11800)?.venueType).toBe("arena");
   });
 });

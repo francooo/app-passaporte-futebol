@@ -32,14 +32,14 @@ async function main() {
     try {
       const r = await syncCountry(iso3);
       total += r.imported;
-      console.log(`[${i + 1}/${targets.length}] ${iso3}: ${r.imported} estádios, ${r.withPhoto} com foto (${((Date.now() - started) / 1000).toFixed(1)}s)`);
+      console.log(`[${i + 1}/${targets.length}] ${iso3}: ${r.imported} locais, ${r.withPhoto} com foto (${((Date.now() - started) / 1000).toFixed(1)}s)`);
     } catch (error) {
       failures.push(iso3);
       console.error(`[${i + 1}/${targets.length}] ${iso3}: ERRO ${(error as Error).message.slice(0, 160)}`);
     }
     await sleep(PAUSE_MS);
   }
-  console.log(`\nConcluído: ${total} estádios; falhas: ${failures.length ? failures.join(", ") : "nenhuma"}`);
+  console.log(`\nConcluído: ${total} locais; falhas: ${failures.length ? failures.join(", ") : "nenhuma"}`);
 }
 
 main().then(

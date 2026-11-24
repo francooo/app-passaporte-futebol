@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { NearbyStadium } from "@shared/api-types";
-import { apiError } from "@/lib/api-auth";
+import { apiError, requireUser } from "@/lib/api-auth";
 import { parseSport } from "@shared/sports";
 import { nearbyStadiums } from "@/lib/catalog/queries";
 
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   if (!p.get("lat") || !p.get("lng") || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
     return apiError(400, "validation", "Coordenadas inválidas.");
   }
-  return NextResponse.json<NearbyStadium[]>(await nearbyStadiums(lat, lng, radius, 20, parseSport(p.get("esporte"))), {
+  return NextResponse.json<NearbyStadium[]>(await nearbyStadiums(lat, lng, radius, 20, parseSport(p.get("esporte")), (await requireUser(request))?.id), {
     headers: { "Cache-Control": "private, no-store" },
   });
 }

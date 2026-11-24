@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { countries, stadiums } from "@/db/schema";
 import { fetchPhotoCredits } from "./commons";
 import { hasUsefulData } from "./filters";
-import { pickCapacity, resolvePlace } from "./rules";
+import { pickCapacity, resolvePlace, venueSports } from "./rules";
 import { fetchCountries, fetchCountryStadiums } from "./wikidata";
 
 /** Atualiza a lista de países (nome em português, ISO2/ISO3, Q-id do Wikidata). */
@@ -23,7 +23,7 @@ export async function syncCountryList() {
 }
 
 /**
- * Importa os estádios de um país do Wikidata para o Neon.
+ * Importa os estádios, arenas e ginásios de um país do Wikidata para o Neon.
  * Upsert por wikidata_id; nunca sobrescreve capacity_override nem o endereço já preenchido.
  */
 export async function syncCountry(iso3: string) {
@@ -35,8 +35,12 @@ export async function syncCountry(iso3: string) {
     const credits = await fetchPhotoCredits(raw.map((s) => s.imageFile).filter((f): f is string => !!f));
     const today = new Date();
 
+    let imported = 0;
     for (const s of raw) {
       const { capacity, needsReview } = pickCapacity(s.capacities);
+      const kind = venueSports(s.venue, capacity);
+      if (!kind) continue;
+      imported++;
       const { city, state } = resolvePlace(s.locationIds, places);
       const photo = s.imageFile ? credits.get(s.imageFile) : undefined;
       const values = {
@@ -50,6 +54,8 @@ export async function syncCountry(iso3: string) {
         capacityNeedsReview: needsReview,
         openedOn: s.openedOn ? new Date(`${s.openedOn}T00:00:00Z`) : null,
         clubs: s.clubs.length ? s.clubs.slice(0, 8) : null,
+        sports: kind.sports,
+        venueType: kind.venueType,
         website: s.website,
         photoUrl: photo?.url ?? null,
         photoAuthor: photo?.author ?? null,
@@ -74,7 +80,7 @@ export async function syncCountry(iso3: string) {
       .update(countries)
       .set({ stadiumCount: total, lastSyncedAt: today, syncError: null })
       .where(eq(countries.iso3, iso3));
-    return { iso3, imported: raw.length, withPhoto: raw.filter((s) => s.imageFile && credits.has(s.imageFile)).length };
+    return { iso3, imported, withPhoto: raw.filter((s) => s.imageFile && credits.has(s.imageFile)).length };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await db

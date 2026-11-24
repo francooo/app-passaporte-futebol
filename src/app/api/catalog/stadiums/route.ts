@@ -1,6 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
-import type { StadiumPage } from "@shared/api-types";
+import type { StadiumPage, StadiumSummary } from "@shared/api-types";
+import { venueSchema } from "@shared/schemas";
 import { apiError } from "@/lib/api-auth";
+import { parseBody, withUser } from "@/lib/api-route";
+import { createVenue } from "@/lib/catalog/venues";
 import { parseSport } from "@shared/sports";
 import { listStadiums } from "@/lib/catalog/queries";
 
@@ -14,5 +17,14 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json<StadiumPage>(await listStadiums({ country, q, page, sport: parseSport(params.get("esporte")) }), {
     headers: { "Cache-Control": "public, s-maxage=600, stale-while-revalidate=86400" },
+  });
+}
+
+/** POST /api/catalog/stadiums — cadastra um local que falta (em moderação; só o autor vê até aprovar). */
+export async function POST(request: NextRequest) {
+  return withUser(request, async (user) => {
+    const body = await parseBody(request, venueSchema);
+    if (!body.ok) return body.error;
+    return NextResponse.json<StadiumSummary>(await createVenue(user.id, body.data), { status: 201 });
   });
 }

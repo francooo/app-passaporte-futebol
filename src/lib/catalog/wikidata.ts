@@ -1,4 +1,4 @@
-import type { CapacityStatement, PlaceNode } from "./rules";
+import type { CapacityStatement, PlaceNode, VenueClassInfo } from "./rules";
 
 const SPARQL = "https://query.wikidata.org/sparql";
 const API = "https://www.wikidata.org/w/api.php";
@@ -116,7 +116,17 @@ function wikidataDate(time: string | undefined): string | null {
 
 // ── Classes (calculadas uma vez por execução) ─────────────────────────────────
 
-type Classes = { football: string[]; generic: string[]; municipality: Set<string>; state: Set<string> };
+type Classes = {
+  football: string[];
+  generic: string[];
+  /** Arenas, ginásios e complexos poliesportivos (vôlei, basquete, futsal). */
+  indoor: string[];
+  gym: Set<string>;
+  /** Casas de show (algumas são "arena" no Wikidata): ficam de fora, salvo se também forem ginásio/estádio. */
+  shows: Set<string>;
+  municipality: Set<string>;
+  state: Set<string>;
+};
 let classesCache: Classes | null = null;
 
 const subclassesOf = async (...roots: string[]) =>
@@ -128,10 +138,15 @@ async function classes(): Promise<Classes> {
   if (classesCache) return classesCache;
   const football = await subclassesOf("Q1154710"); // estádio de futebol
   const generic = (await subclassesOf("Q483110")).filter((id) => !football.includes(id)); // estádio
+  const stadiumTypes = new Set([...football, ...generic]);
+  // arena / ginásio / complexo poliesportivo (sem os tipos de estádio, que já entram acima)
+  const gym = new Set(await subclassesOf("Q14092"));
+  const indoor = [...new Set([...(await subclassesOf("Q641226", "Q7579839")), ...gym])].filter((id) => !stadiumTypes.has(id));
+  const shows = new Set(await subclassesOf("Q18674739")); // casa de shows
   // município / cidade / vila / cidade grande; 1º nível administrativo (estados, províncias…)
   const municipality = new Set(await subclassesOf("Q15284", "Q515", "Q3957", "Q1549591"));
   const state = new Set(await subclassesOf("Q10864048"));
-  classesCache = { football, generic, municipality, state };
+  classesCache = { football, generic, indoor, gym, shows, municipality, state };
   return classesCache;
 }
 
@@ -158,6 +173,33 @@ export async function fetchCountries(): Promise<WikidataCountry[]> {
 }
 
 let indexCache: Map<string, string[]> | null = null;
+let indoorIndexCache: Map<string, string[]> | null = null;
+
+const byCountry = (rows: Binding[]) => {
+  const index = new Map<string, string[]>();
+  for (const r of rows) {
+    const country = qid(r.country?.value);
+    const list = index.get(country) ?? [];
+    list.push(qid(r.s?.value));
+    index.set(country, list);
+  }
+  return index;
+};
+
+/** Arenas e ginásios do mundo, por país (mesma estratégia do índice de estádios). */
+async function indoorIndex(): Promise<Map<string, string[]>> {
+  if (indoorIndexCache) return indoorIndexCache;
+  const { indoor } = await classes();
+  const rows = await sparql(`
+    SELECT DISTINCT ?s ?country WHERE {
+      hint:Query hint:optimizer "None" .
+      VALUES ?type { ${values(indoor)} } ?s wdt:P31 ?type .
+      ?s wdt:P17 ?country .
+      FILTER NOT EXISTS { ?s wdt:P576 [] . }
+    }`);
+  indoorIndexCache = byCountry(rows);
+  return indoorIndexCache;
+}
 
 /**
  * Todos os estádios de futebol do mundo (ou estádios com esporte = futebol), por país, numa consulta só (~6 s).
@@ -175,15 +217,8 @@ async function stadiumIndex(): Promise<Map<string, string[]>> {
       ?s wdt:P17 ?country .
       FILTER NOT EXISTS { ?s wdt:P576 [] . }
     }`);
-  const index = new Map<string, string[]>();
-  for (const r of rows) {
-    const country = qid(r.country?.value);
-    const list = index.get(country) ?? [];
-    list.push(qid(r.s?.value));
-    index.set(country, list);
-  }
-  indexCache = index;
-  return index;
+  indexCache = byCountry(rows);
+  return indexCache;
 }
 
 // ── Estádios de um país ───────────────────────────────────────────────────────
@@ -199,12 +234,16 @@ export type RawStadium = {
   locationIds: string[];
   capacities: CapacityStatement[];
   clubs: string[];
+  /** Onde o item apareceu (estádio de futebol, arena/ginásio) e seus tipos (P31), para escolher os esportes. */
+  venue: VenueClassInfo;
 };
 
 const MAX_PLACE_DEPTH = 6;
 
 export async function fetchCountryStadiums(countryQid: string): Promise<{ stadiums: RawStadium[]; places: Map<string, PlaceNode> }> {
-  const ids = (await stadiumIndex()).get(countryQid) ?? [];
+  const footballIds = new Set((await stadiumIndex()).get(countryQid) ?? []);
+  const indoorIds = new Set((await indoorIndex()).get(countryQid) ?? []);
+  const ids = [...new Set([...footballIds, ...indoorIds])];
   if (ids.length === 0) return { stadiums: [], places: new Map() };
   const cls = await classes();
 
@@ -213,6 +252,14 @@ export async function fetchCountryStadiums(countryQid: string): Promise<{ stadiu
   for (const e of entities.values()) {
     const name = label(e);
     if (!name) continue;
+    const types = itemIds(e, "P31");
+    const venue: VenueClassInfo = {
+      football: footballIds.has(e.id),
+      indoor: indoorIds.has(e.id),
+      gym: types.some((t) => cls.gym.has(t)),
+      onlyShows: types.length > 0 && types.every((t) => cls.shows.has(t) || !cls.indoor.includes(t)) && types.some((t) => cls.shows.has(t)),
+      footballSport: itemIds(e, "P641").includes("Q2736"),
+    };
     const coord = firstValue<{ latitude: number; longitude: number }>(e, "P625");
     stadiums.push({
       wikidataId: e.id,
@@ -229,6 +276,7 @@ export async function fetchCountryStadiums(countryQid: string): Promise<{ stadiu
         date: (c.qualifiers?.P585?.[0]?.datavalue?.value as { time?: string } | undefined)?.time ?? null,
       })),
       clubs: itemIds(e, "P466"),
+      venue,
     });
   }
 
