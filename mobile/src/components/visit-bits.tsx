@@ -72,6 +72,7 @@ export function VisitStamp({ visit: v, onPress }: { visit: VisitSummary; onPress
       date={v.date ? new Date(y, m - 1, d) : null}
       photo={v.stadium.thumbUrl ? remoteImage(v.stadium.thumbUrl) : null}
       tone={v.kind === "match" ? "azul" : "verde"}
+      tag={v.result?.status === "pending" ? "Aguardando resultado" : v.predictionOutcome === "exact" ? "Palpite na mosca!" : null}
       onPress={onPress}
     />
   );

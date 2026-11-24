@@ -5,6 +5,11 @@ import type { CompetitionOption, MatchResult, TeamRef, UpcomingMatch } from "@sh
 import { db } from "@/db";
 import { competitions, matches, teams } from "@/db/schema";
 import { groupByStadium, UPCOMING_DAYS, UPCOMING_PER_STADIUM, UPCOMING_STATUSES } from "./upcoming";
+import { OPEN_MATCH_STATUSES } from "@/lib/results/rules";
+
+/** Jogos ainda não encerrados que entram em "Encontre a partida": começaram há até 6 h ou começam em até 24 h. */
+const OPEN_WINDOW_BEFORE_MS = 6 * 60 * 60 * 1000;
+const OPEN_WINDOW_AFTER_MS = 24 * 60 * 60 * 1000;
 
 const home = alias(teams, "home_team");
 const away = alias(teams, "away_team");
@@ -17,7 +22,7 @@ const teamMatches = (t: { name: AnyPgColumn; shortName: AnyPgColumn }, term: str
   or(likeUnaccent(sql`${t.name}`, term), likeUnaccent(sql`coalesce(${t.shortName}, '')`, term));
 
 /**
- * Busca de partidas encerradas para "Encontre a partida".
+ * Busca de partidas para "Encontre a partida": encerradas e, para o carimbo com palpite, as de hoje/ao vivo.
  * q: "Flamengo x Botafogo" (os dois times, em qualquer ordem) ou um só nome; data: ±3 dias.
  */
 export async function searchMatches({
@@ -39,7 +44,17 @@ export async function searchMatches({
     .filter((t) => t.length >= 2)
     .slice(0, 2);
 
-  const conditions: Array<SQL | undefined> = [eq(matches.status, "FINISHED")];
+  const now = Date.now();
+  const conditions: Array<SQL | undefined> = [
+    or(
+      eq(matches.status, "FINISHED"),
+      and(
+        inArray(matches.status, [...OPEN_MATCH_STATUSES]),
+        gte(matches.utcDate, new Date(now - OPEN_WINDOW_BEFORE_MS)),
+        lte(matches.utcDate, new Date(now + OPEN_WINDOW_AFTER_MS)),
+      ),
+    ),
+  ];
   if (terms.length === 1) conditions.push(or(teamMatches(home, terms[0]), teamMatches(away, terms[0])));
   if (terms.length === 2) {
     const [a, b] = terms;
@@ -58,6 +73,7 @@ export async function searchMatches({
     .select({
       id: matches.id,
       utcDate: matches.utcDate,
+      status: matches.status,
       homeScore: matches.homeScore,
       awayScore: matches.awayScore,
       stadiumId: matches.stadiumId,
@@ -81,6 +97,7 @@ export async function searchMatches({
   return rows.map((r) => ({
     id: r.id,
     utcDate: r.utcDate.toISOString(),
+    status: r.status,
     homeScore: r.homeScore,
     awayScore: r.awayScore,
     stadiumId: r.stadiumId,

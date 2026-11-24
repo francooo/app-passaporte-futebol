@@ -52,7 +52,7 @@ export function resultFor(teamId: string, v: Pick<StatVisit, "home" | "away" | "
   return own > other ? "W" : own === other ? "D" : "L";
 }
 
-export function computeStats(visits: StatVisit[], { home, teamId }: StatOptions): Omit<FanStats, "homeCity"> {
+export function computeStats(visits: StatVisit[], { home, teamId }: StatOptions): Omit<FanStats, "homeCity" | "predictions"> {
   const matches = visits.filter((v) => v.kind === "match");
 
   // Km: ida e volta entre a cidade do usuário e o estádio, por registro

@@ -27,7 +27,13 @@ export type FdMatch = {
   venue?: string | null;
   homeTeam: FdTeam;
   awayTeam: FdTeam;
-  score: { fullTime: { home: number | null; away: number | null } };
+  score: {
+    /** REGULAR, EXTRA_TIME ou PENALTY_SHOOTOUT. */
+    duration?: string | null;
+    /** Nos pênaltis, soma os gols da disputa (ver officialFdScore em src/lib/results/rules.ts). */
+    fullTime: { home: number | null; away: number | null };
+    penalties?: { home: number | null; away: number | null } | null;
+  };
 };
 
 export class FootballDataError extends Error {
@@ -75,6 +81,8 @@ export const footballData = {
     get<{ matches: FdMatch[] }>(`/competitions/${code}/matches?status=FINISHED${season ? `&season=${season}` : ""}`).then(
       (r) => r.matches,
     ),
+  /** Uma partida pelo id do provedor (busca do resultado depois do jogo). */
+  match: (id: string) => get<FdMatch>(`/matches/${encodeURIComponent(id)}`),
   /** Todas as partidas da competição entre as datas ("AAAA-MM-DD"), em qualquer status. */
   matchesBetween: (code: string, dateFrom: string, dateTo: string) =>
     get<{ matches: FdMatch[] }>(`/competitions/${code}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`).then((r) => r.matches),

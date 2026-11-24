@@ -5,6 +5,7 @@ import { competitions, matches, stadiums, teams } from "@/db/schema";
 import { footballData, FootballDataError, type FdMatch, type FdTeam } from "./football-data";
 import { areaToIso3, findTeamStadium, type CatalogStadium } from "./link";
 import { UPCOMING_STATUSES, upcomingWindow } from "./upcoming";
+import { officialFdScore } from "@/lib/results/rules";
 
 const PROVIDER = "football-data";
 
@@ -60,14 +61,15 @@ async function upsertTeam(t: FdTeam, fallbackCountry: string | null, linked: Map
 async function upsertMatch(code: string, m: FdMatch, country: string | null, linked: Map<string, { id: string; stadiumId: string | null }>) {
   const home = await upsertTeam(m.homeTeam, country, linked);
   const away = await upsertTeam(m.awayTeam, country, linked);
+  const score = officialFdScore(m.score);
   const values = {
     competitionCode: code,
     utcDate: new Date(m.utcDate),
     status: m.status,
     homeTeamId: home.id,
     awayTeamId: away.id,
-    homeScore: m.score.fullTime.home,
-    awayScore: m.score.fullTime.away,
+    homeScore: score.home,
+    awayScore: score.away,
     // Partida no estádio do mandante (o provedor raramente informa o local do jogo)
     stadiumId: home.stadiumId,
   };

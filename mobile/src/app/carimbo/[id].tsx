@@ -8,7 +8,7 @@ import { Button } from "@/components/button";
 import { KitIcon } from "@/components/kit-icon";
 import { Stamp } from "@/components/stamp";
 import { Ticket } from "@/components/ticket";
-import { Scoreline } from "@/components/visit-bits";
+import { ResultPanel } from "@/components/result-panel";
 import { useAuth } from "@/lib/auth-context";
 import { useLoad } from "@/lib/catalog";
 import { remoteImage } from "@/lib/remote-image";
@@ -150,12 +150,7 @@ export default function CarimboScreen() {
               </Pressable>
             </View>
 
-            {isMatch && (v.home || v.away) && (
-              <View style={styles.box}>
-                <Scoreline home={v.home} away={v.away} homeScore={v.homeScore} awayScore={v.awayScore} size={52} />
-                {v.competition && <Text style={[type.suave, { textAlign: "center" }]}>{v.competition}</Text>}
-              </View>
-            )}
+            {isMatch && (v.home || v.away) && <ResultPanel visit={v} onChanged={reload} />}
 
             {v.note && (
               <View style={{ gap: 4 }}>

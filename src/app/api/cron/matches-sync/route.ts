@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { FREE_COMPETITIONS } from "@/lib/matches/football-data";
 import { competitionsDueForSync, syncCompetition, syncUpcoming } from "@/lib/matches/sync";
+import { resolvePendingResults } from "@/lib/results/resolve";
 
 // football-data.org no plano gratuito: 10 requisições/min (~6,5 s por chamada).
 export const maxDuration = 300;
@@ -8,11 +9,14 @@ export const maxDuration = 300;
 const BUDGET_MS = 240_000;
 /** Tempo médio do sync completo de uma competição (~6 chamadas). */
 const FULL_SYNC_MS = 45_000;
+/** Carimbos pendentes resolvidos por execução (~6,5 s cada quando precisa consultar o provedor). */
+const RESULTS_PER_RUN = 10;
 
 /**
  * Job diário (vercel.json). A Vercel chama com "Authorization: Bearer $CRON_SECRET".
- * 1. Próximos jogos (14 dias) de todas as competições: 1 chamada cada (~85 s), para a lista do registro.
- * 2. No tempo que sobra, resultados e times das competições sincronizadas há mais tempo.
+ * 1. Próximos jogos (30 dias) de todas as competições: 1 chamada cada (~85 s), para o registro e o mapa.
+ * 2. Resultado dos carimbos criados antes do fim do jogo (palpite) que ninguém abriu desde então.
+ * 3. No tempo que sobra, resultados e times das competições sincronizadas há mais tempo.
  */
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
@@ -31,6 +35,13 @@ export async function GET(request: Request) {
     }
   }
 
+  let results: number | string = 0;
+  try {
+    results = await resolvePendingResults({ limit: RESULTS_PER_RUN });
+  } catch (error) {
+    results = (error as Error).message.slice(0, 160);
+  }
+
   const done: Array<{ code: string; matches?: number; error?: string }> = [];
   for (const code of await competitionsDueForSync(FREE_COMPETITIONS, FREE_COMPETITIONS.length)) {
     // Não começa uma competição sem tempo para terminá-la
@@ -42,5 +53,5 @@ export async function GET(request: Request) {
       done.push({ code, error: (error as Error).message.slice(0, 160) });
     }
   }
-  return NextResponse.json({ upcoming, done, seconds: Math.round((Date.now() - started) / 1000) });
+  return NextResponse.json({ upcoming, results, done, seconds: Math.round((Date.now() - started) / 1000) });
 }

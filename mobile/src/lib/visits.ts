@@ -11,7 +11,7 @@ import type {
   VisitList,
   VisitPhoto,
 } from "@shared/api-types";
-import { PHOTO_LIMITS, type ProfileInput, type VisitInput } from "@shared/schemas";
+import { PHOTO_LIMITS, type PredictionInput, type ProfileInput, type ResultInput, type VisitInput } from "@shared/schemas";
 import { api, API_URL, ApiRequestError } from "./api";
 
 /**
@@ -25,6 +25,12 @@ export function visitsApi(token: string | null) {
       get<VisitList>(`/api/visits?${new URLSearchParams(Object.entries(filters).filter(([, v]) => v) as [string, string][])}`),
     get: (id: string) => get<VisitDetail>(`/api/visits/${encodeURIComponent(id)}`),
     create: (input: VisitInput) => api<VisitDetail>("/api/visits", { method: "POST", body: input, token }),
+    /** Resultado informado à mão (vale sobre a busca automática). */
+    setResult: (id: string, input: ResultInput) =>
+      api<VisitDetail>(`/api/visits/${encodeURIComponent(id)}/result`, { method: "PATCH", body: input, token }),
+    /** Palpite, enquanto o resultado não sai. */
+    setPrediction: (id: string, input: PredictionInput) =>
+      api<VisitDetail>(`/api/visits/${encodeURIComponent(id)}/prediction`, { method: "PATCH", body: input, token }),
     remove: (id: string) => api<null>(`/api/visits/${encodeURIComponent(id)}`, { method: "DELETE", token }),
     addPhoto: async (visitId: string, photo: PickedPhoto) => {
       const send = async (maxSide: number, compress: number) => {

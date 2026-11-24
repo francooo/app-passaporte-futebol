@@ -133,6 +133,16 @@ async function Stats({ searchParams }: Pick<PageProps<"/app/estatisticas">, "sea
         </Panel>
       </div>
 
+      {s.predictions.judged > 0 && (
+        <section aria-label="Palpites" className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-2xl border border-linha bg-white/80 p-4">
+          <span className="titulo-display text-2xl text-estadio">Seus palpites</span>
+          <span className="font-display text-lg text-tinta">
+            {s.predictions.exact + s.predictions.winner} de {s.predictions.judged} certos · {plural(s.predictions.exact, "na mosca", "na mosca")}
+          </span>
+          <span className="text-xs text-suave">Na mosca = placar exato. Certo = acertou o vencedor ou o empate.</span>
+        </section>
+      )}
+
       <p className="text-sm text-suave">
         {plural(total, "registro", "registros")} no total ({plural(s.visits, "visita", "visitas")} e {plural(s.matches, "partida", "partidas")}).
         Distâncias em linha reta, ida e volta.

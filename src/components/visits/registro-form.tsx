@@ -12,14 +12,25 @@ import { Ticket } from "@/components/ui/ticket";
 import { api, ApiFailure, formatDay, todayIso, uploadPhoto } from "@/lib/client-api";
 import { cn } from "@/lib/cn";
 import { Scoreline, TeamCrest } from "./team-crest";
-import { UpcomingMatches } from "./upcoming-matches";
+import { formatKickoff, UpcomingMatches } from "./upcoming-matches";
 
 type Kind = "visit" | "match";
 type Step = 1 | 2 | 3;
 export type ManualTeam = { id: string | null; name: string; crestUrl: string | null };
-type Manual = { home: ManualTeam; away: ManualTeam; homeScore: string; awayScore: string; competition: string };
+/** pending: o jogo ainda não terminou — homeScore/awayScore viram palpite (opcional) e kickoff é o início ("HH:MM"). */
+type Manual = { home: ManualTeam; away: ManualTeam; homeScore: string; awayScore: string; competition: string; pending: boolean; kickoff: string };
+/** Palpite digitado (texto dos campos). */
+type Guess = { home: string; away: string };
 
 const emptyTeam: ManualTeam = { id: null, name: "", crestUrl: null };
+const emptyGuess: Guess = { home: "", away: "" };
+const isGoals = (s: string) => /^\d{1,2}$/.test(s);
+const guessFilled = (g: Guess) => isGoals(g.home) && isGoals(g.away);
+/** Partida escolhida que ainda não terminou (hoje/ao vivo): o placar vira palpite. */
+const isOpenMatch = (m: MatchResult | null) => Boolean(m?.status && m.status !== "FINISHED");
+const isLive = (m: MatchResult) => m.status === "IN_PLAY" || m.status === "PAUSED";
+/** "21:30" agora (fuso do aparelho). */
+const nowTime = () => new Date().toTimeString().slice(0, 5);
 const number = new Intl.NumberFormat("pt-BR");
 
 /**
@@ -34,6 +45,7 @@ export function RegistroForm({ initialStadium }: { initialStadium: StadiumSummar
   const [date, setDate] = useState("");
   const [match, setMatch] = useState<MatchResult | null>(null);
   const [manual, setManual] = useState<Manual | null>(null);
+  const [guess, setGuess] = useState<Guess>(emptyGuess);
   const [photos, setPhotos] = useState<Array<{ file: File; preview: string }>>([]);
   const [note, setNote] = useState("");
   const [status, setStatus] = useState<{ busy: boolean; message: string | null; error: string | null }>({ busy: false, message: null, error: null });
@@ -76,17 +88,31 @@ export function RegistroForm({ initialStadium }: { initialStadium: StadiumSummar
     if (!stadium) return;
     setStatus({ busy: true, message: "Criando carimbo…", error: null });
     const body: Record<string, unknown> = { kind, stadiumId: stadium.id, date: date || null, note: note || null };
-    if (kind === "match" && match) body.matchId = match.id;
+    if (kind === "match" && match) {
+      body.matchId = match.id;
+      if (isOpenMatch(match) && guessFilled(guess)) {
+        Object.assign(body, { predictedHomeScore: Number(guess.home), predictedAwayScore: Number(guess.away) });
+      }
+    }
     if (kind === "match" && !match && manual) {
       Object.assign(body, {
         homeTeamId: manual.home.id,
         homeTeamName: manual.home.name,
         awayTeamId: manual.away.id,
         awayTeamName: manual.away.name,
-        homeScore: Number(manual.homeScore),
-        awayScore: Number(manual.awayScore),
         competition: manual.competition || null,
       });
+      if (manual.pending) {
+        const typed = { home: manual.homeScore, away: manual.awayScore };
+        Object.assign(body, {
+          resultPending: true,
+          // Início no fuso do aparelho, no dia escolhido (ou hoje)
+          kickoffAt: new Date(`${date || todayIso()}T${manual.kickoff || nowTime()}`).toISOString(),
+          ...(guessFilled(typed) ? { predictedHomeScore: Number(typed.home), predictedAwayScore: Number(typed.away) } : {}),
+        });
+      } else {
+        Object.assign(body, { homeScore: Number(manual.homeScore), awayScore: Number(manual.awayScore) });
+      }
     }
 
     let visit: VisitDetail;
@@ -119,6 +145,7 @@ export function RegistroForm({ initialStadium }: { initialStadium: StadiumSummar
       date={date || (match ? match.utcDate.slice(0, 10) : "")}
       match={match}
       manual={manual}
+      guess={guess}
     />
   );
 
@@ -167,6 +194,7 @@ export function RegistroForm({ initialStadium }: { initialStadium: StadiumSummar
               onPick={(m) => {
                 setMatch(m);
                 setManual(null);
+                setGuess(emptyGuess);
                 if (!date) setDate(m.utcDate.slice(0, 10));
                 goNext();
               }}
@@ -185,6 +213,8 @@ export function RegistroForm({ initialStadium }: { initialStadium: StadiumSummar
               date={date}
               match={match}
               manual={manual}
+              guess={guess}
+              onGuess={setGuess}
               photos={photos}
               onPhotos={setPhotos}
               note={note}
@@ -619,7 +649,7 @@ function StepMatch({
                   <button
                     type="button"
                     onClick={() => onPick(m)}
-                    aria-label={`${m.home.name} ${m.homeScore ?? ""} x ${m.awayScore ?? ""} ${m.away.name}, ${m.competition.name}, ${formatDay(m.utcDate)}`}
+                    aria-label={`${m.home.name} ${m.homeScore ?? ""} x ${m.awayScore ?? ""} ${m.away.name}, ${m.competition.name}, ${isOpenMatch(m) ? `${isLive(m) ? "ao vivo, " : ""}começa ${formatKickoff(m.utcDate)}` : formatDay(m.utcDate)}`}
                     className={cn(
                       "papel grid w-full grid-cols-[1fr_auto] items-center gap-2 rounded-xl px-3 py-4 text-left transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-estadio sm:px-5",
                       selected?.id === m.id && "ring-2 ring-estadio",
@@ -627,8 +657,13 @@ function StepMatch({
                   >
                     <span className="flex flex-col gap-1">
                       <Scoreline home={m.home} away={m.away} homeScore={m.homeScore} awayScore={m.awayScore} size="sm" />
-                      <span className="text-center text-sm text-suave">
-                        {m.competition.name} · {formatDay(m.utcDate)}
+                      <span className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-sm text-suave">
+                        {isOpenMatch(m) && (
+                          <span className="rotulo-display rounded bg-partida px-1.5 text-xs text-estadio">
+                            {isLive(m) ? "Ao vivo" : "Ainda não começou"}
+                          </span>
+                        )}
+                        {m.competition.name} · {isOpenMatch(m) ? formatKickoff(m.utcDate) : formatDay(m.utcDate)}
                       </span>
                     </span>
                     <KitIcon name="arrow-right" size={20} />
@@ -662,8 +697,9 @@ function ManualForm({
   competitions: CompetitionOption[];
 }) {
   const [value, setValue] = useState<Manual>(
-    initial ?? { home: emptyTeam, away: emptyTeam, homeScore: "", awayScore: "", competition: "" },
+    initial ?? { home: emptyTeam, away: emptyTeam, homeScore: "", awayScore: "", competition: "", pending: false, kickoff: "" },
   );
+  const timeId = useId();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const listId = useId();
 
@@ -672,8 +708,15 @@ function ManualForm({
     const next: Record<string, string> = {};
     if (!value.home.name.trim()) next.home = "Informe o mandante.";
     if (!value.away.name.trim()) next.away = "Informe o visitante.";
-    const valid = (s: string) => /^\d{1,2}$/.test(s);
-    if (!valid(value.homeScore) || !valid(value.awayScore)) next.score = "Informe o placar (ex.: 2 e 1).";
+    if (value.pending) {
+      // Palpite opcional, mas com os dois lados
+      if ((value.homeScore !== "" || value.awayScore !== "") && !guessFilled({ home: value.homeScore, away: value.awayScore })) {
+        next.score = "Preencha os dois lados do palpite (ou deixe os dois vazios).";
+      }
+      if (!/^\d{2}:\d{2}$/.test(value.kickoff)) next.kickoff = "Informe o horário de início.";
+    } else if (!isGoals(value.homeScore) || !isGoals(value.awayScore)) {
+      next.score = "Informe o placar (ex.: 2 e 1).";
+    }
     if (value.home.name.trim() && value.home.name.trim().toLowerCase() === value.away.name.trim().toLowerCase()) {
       next.away = "Mandante e visitante precisam ser diferentes.";
     }
@@ -690,8 +733,49 @@ function ManualForm({
         </div>
         <TeamInput label="Mandante" value={value.home} onChange={(home) => setValue((v) => ({ ...v, home }))} error={errors.home} />
         <TeamInput label="Visitante" value={value.away} onChange={(away) => setValue((v) => ({ ...v, away }))} error={errors.away} />
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-linha bg-white p-3">
+          <input
+            type="checkbox"
+            checked={value.pending}
+            onChange={(e) => {
+              const pending = e.target.checked;
+              setValue((v) => ({ ...v, pending, kickoff: pending && !v.kickoff ? nowTime() : v.kickoff }));
+              setErrors({});
+            }}
+            className="mt-0.5 size-5 shrink-0 accent-[var(--color-estadio)]"
+          />
+          <span>
+            <span className="block font-semibold text-estadio">O jogo ainda não terminou</span>
+            <span className="block text-sm text-suave">O placar vira seu palpite. O resultado é buscado depois do jogo, ou você informa no carimbo.</span>
+          </span>
+        </label>
+        {value.pending && (
+          <label htmlFor={timeId} className="flex flex-col gap-1">
+            <span className="text-sm font-semibold text-estadio">Horário de início</span>
+            <input
+              id={timeId}
+              type="time"
+              value={value.kickoff}
+              aria-invalid={!!errors.kickoff || undefined}
+              onChange={(e) => setValue((v) => ({ ...v, kickoff: e.target.value }))}
+              className={cn(
+                "min-h-12 w-40 rounded-xl border bg-white px-3 text-tinta outline-none focus:border-estadio focus:ring-2 focus:ring-estadio/30",
+                errors.kickoff ? "border-erro" : "border-linha",
+              )}
+            />
+            {errors.kickoff && <span className="text-sm text-erro">{errors.kickoff}</span>}
+          </label>
+        )}
         <fieldset>
-          <legend className="text-sm font-semibold text-estadio">Placar</legend>
+          <legend className="text-sm font-semibold text-estadio">
+            {value.pending ? (
+              <>
+                Seu palpite <span className="font-normal text-suave">(opcional)</span>
+              </>
+            ) : (
+              "Placar"
+            )}
+          </legend>
           <div className="mt-1 flex items-center gap-3">
             <ScoreInput label="Gols do mandante" value={value.homeScore} onChange={(homeScore) => setValue((v) => ({ ...v, homeScore }))} invalid={!!errors.score} />
             <span className="font-display text-2xl text-suave">×</span>
@@ -725,7 +809,7 @@ function ManualForm({
   );
 }
 
-function ScoreInput({ label, value, onChange, invalid }: { label: string; value: string; onChange: (v: string) => void; invalid: boolean }) {
+export function ScoreInput({ label, value, onChange, invalid }: { label: string; value: string; onChange: (v: string) => void; invalid: boolean }) {
   return (
     <input
       aria-label={label}
@@ -855,6 +939,8 @@ function StepPhotos({
   date,
   match,
   manual,
+  guess,
+  onGuess,
   photos,
   onPhotos,
   note,
@@ -868,6 +954,8 @@ function StepPhotos({
   date: string;
   match: MatchResult | null;
   manual: Manual | null;
+  guess: Guess;
+  onGuess: (g: Guess) => void;
   photos: Array<{ file: File; preview: string }>;
   onPhotos: (p: Array<{ file: File; preview: string }>) => void;
   note: string;
@@ -914,12 +1002,16 @@ function StepPhotos({
             </span>
           </Summary>
           {kind === "match" && (
-            <Summary label="Resultado da partida">
+            <Summary label={isOpenMatch(match) || manual?.pending ? "Partida" : "Resultado da partida"}>
               <div className="rounded-xl border border-linha bg-white p-3">
                 {match ? (
                   <>
                     <Scoreline home={match.home} away={match.away} homeScore={match.homeScore} awayScore={match.awayScore} />
-                    <p className="mt-1 text-center text-sm text-suave">{match.competition.name}</p>
+                    <p className="mt-1 text-center text-sm text-suave">
+                      {match.competition.name}
+                      {isOpenMatch(match) && ` · começa ${formatKickoff(match.utcDate)}`}
+                    </p>
+                    {isOpenMatch(match) && <GuessFields guess={guess} onGuess={onGuess} />}
                     {match.stadiumId && match.stadiumId !== stadium.id && (
                       <p className="mt-2 rounded-lg bg-partida px-3 py-2 text-sm text-tinta">
                         Pelo nosso catálogo, essa partida foi em outro estádio. Confira se é o jogo certo ou volte e troque.
@@ -931,10 +1023,18 @@ function StepPhotos({
                     <Scoreline
                       home={manual.home}
                       away={manual.away}
-                      homeScore={Number(manual.homeScore)}
-                      awayScore={Number(manual.awayScore)}
+                      homeScore={manual.pending ? null : Number(manual.homeScore)}
+                      awayScore={manual.pending ? null : Number(manual.awayScore)}
                     />
                     <p className="mt-1 text-center text-sm text-suave">{manual.competition || "Competição não informada"} · preenchido à mão</p>
+                    {manual.pending && (
+                      <p className="mt-2 rounded-lg bg-partida px-3 py-2 text-center text-sm text-tinta">
+                        {guessFilled({ home: manual.homeScore, away: manual.awayScore })
+                          ? `Seu palpite: ${manual.homeScore} × ${manual.awayScore}. `
+                          : "Sem palpite. "}
+                        O resultado chega depois do jogo (ou informe no carimbo).
+                      </p>
+                    )}
                   </>
                 ) : (
                   <p className="text-suave">Partida não escolhida.</p>
@@ -1037,19 +1137,42 @@ function Summary({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/** Palpite para a partida escolhida que ainda não terminou. */
+function GuessFields({ guess, onGuess }: { guess: Guess; onGuess: (g: Guess) => void }) {
+  return (
+    <fieldset className="mt-3 flex flex-col items-center gap-2 rounded-lg bg-partida px-3 py-3">
+      <legend className="sr-only">Seu palpite</legend>
+      <p className="text-sm font-semibold text-estadio">
+        Seu palpite <span className="font-normal text-suave">(opcional)</span>
+      </p>
+      <div className="flex items-center gap-3">
+        <ScoreInput label="Palpite: gols do mandante" value={guess.home} onChange={(home) => onGuess({ ...guess, home })} invalid={false} />
+        <span className="font-display text-2xl text-suave">×</span>
+        <ScoreInput label="Palpite: gols do visitante" value={guess.away} onChange={(away) => onGuess({ ...guess, away })} invalid={false} />
+      </div>
+      <p className="text-center text-xs text-suave">O jogo ainda não terminou: o resultado chega sozinho depois do fim e é comparado com o palpite.</p>
+    </fieldset>
+  );
+}
+
 function PreviewCard({
   stadium,
   kind,
   date,
   match,
   manual,
+  guess,
 }: {
   stadium: StadiumSummary | null;
   kind: Kind;
   date: string;
   match: MatchResult | null;
   manual: Manual | null;
+  guess: Guess;
 }) {
+  // Jogo em andamento: mostra o palpite (ou nada) no lugar do placar
+  const pending = isOpenMatch(match) || (!match && manual?.pending);
+  const shownGuess = match ? guess : { home: manual?.homeScore ?? "", away: manual?.awayScore ?? "" };
   const where = stadium ? [stadium.city, stadium.state && stadium.state !== stadium.city ? stadium.state : null].filter(Boolean).join(" - ") || stadium.country : "";
   return (
     <Ticket innerClassName="flex flex-col items-center gap-5 text-center">
@@ -1070,7 +1193,13 @@ function PreviewCard({
           <div className="mt-1 flex items-center gap-2 text-tinta">
             <TeamCrest team={match ? match.home : manual!.home} size={24} />
             <span className="titulo-display text-xl tabular-nums text-estadio">
-              {match ? `${match.homeScore ?? "–"} × ${match.awayScore ?? "–"}` : `${manual!.homeScore} × ${manual!.awayScore}`}
+              {pending
+                ? guessFilled(shownGuess)
+                  ? `Palpite ${shownGuess.home} × ${shownGuess.away}`
+                  : "Aguardando o jogo"
+                : match
+                  ? `${match.homeScore ?? "–"} × ${match.awayScore ?? "–"}`
+                  : `${manual!.homeScore} × ${manual!.awayScore}`}
             </span>
             <TeamCrest team={match ? match.away : manual!.away} size={24} />
           </div>

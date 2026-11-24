@@ -67,6 +67,8 @@ const score = z.coerce
 /**
  * Registro de visita ou partida. Partida: vem de "Encontre a partida" (matchId)
  * ou do preenchimento manual (times + placar; competição opcional). Data opcional ("pode registrar sem data").
+ * Jogo que ainda não terminou (resultPending, ou partida escolhida ainda não encerrada): o placar vira
+ * palpite (predicted*, opcional) e o resultado é buscado depois do fim previsto (kickoffAt + 2 h).
  */
 export const visitSchema = z
   .object({
@@ -80,6 +82,12 @@ export const visitSchema = z
     awayTeamName: optionalText(80),
     homeScore: score.nullish(),
     awayScore: score.nullish(),
+    /** Manual: o jogo ainda não terminou (sem placar; resultado depois). */
+    resultPending: z.boolean().optional(),
+    predictedHomeScore: score.nullish(),
+    predictedAwayScore: score.nullish(),
+    /** Manual pendente: início do jogo (ISO). Sem ele, vale a hora do registro. */
+    kickoffAt: z.iso.datetime({ offset: true, message: "Horário inválido." }).nullish(),
     competition: optionalText(80),
     note: optionalText(1000),
   })
@@ -90,12 +98,25 @@ export const visitSchema = z
     if (v.kind !== "match" || v.matchId) return;
     if (!v.homeTeamId && !v.homeTeamName) ctx.addIssue({ code: "custom", path: ["homeTeamName"], message: "Informe o mandante." });
     if (!v.awayTeamId && !v.awayTeamName) ctx.addIssue({ code: "custom", path: ["awayTeamName"], message: "Informe o visitante." });
-    if (v.homeScore == null || v.awayScore == null) {
+    if (!v.resultPending && (v.homeScore == null || v.awayScore == null)) {
       ctx.addIssue({ code: "custom", path: ["homeScore"], message: "Informe o placar." });
+    }
+  })
+  .superRefine((v, ctx) => {
+    if ((v.predictedHomeScore == null) !== (v.predictedAwayScore == null)) {
+      ctx.addIssue({ code: "custom", path: ["predictedHomeScore"], message: "Informe os dois lados do palpite." });
     }
   });
 
 export type VisitInput = z.input<typeof visitSchema>;
+
+/** Resultado informado à mão no carimbo (vale sobre a busca automática). */
+export const resultSchema = z.object({ homeScore: score, awayScore: score });
+export type ResultInput = z.input<typeof resultSchema>;
+
+/** Palpite, editável enquanto o resultado não sai. */
+export const predictionSchema = z.object({ predictedHomeScore: score, predictedAwayScore: score });
+export type PredictionInput = z.input<typeof predictionSchema>;
 
 /** Perfil: cidade onde mora (base dos km viajados) e time do coração. */
 export const profileSchema = z.object({

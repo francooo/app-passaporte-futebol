@@ -81,9 +81,25 @@ export type VisitSummary = {
   stadium: { id: string; name: string; city: string | null; state: string | null; country: string; thumbUrl: string | null };
   home: TeamRef | null;
   away: TeamRef | null;
+  /** Resultado oficial; null enquanto o jogo não termina. */
   homeScore: number | null;
   awayScore: number | null;
   competition: string | null;
+  /** Palpite do torcedor (carimbo criado antes do fim do jogo). */
+  prediction: { home: number; away: number } | null;
+  /** Situação do resultado (só partidas). */
+  result: VisitResultState | null;
+  /** Palpite × resultado: placar exato, vencedor/empate, ou errou. */
+  predictionOutcome: "exact" | "winner" | "miss" | null;
+};
+
+export type VisitResultState = {
+  status: "pending" | "final";
+  source: "football-data" | "api-football" | "manual" | null;
+  /** Início + 2 h (ISO); antes disso a tela mostra "resultado por volta de…". */
+  expectedEndAt: string | null;
+  /** Pendente e sem busca automática possível (ou ela desistiu): pedir o resultado à mão. */
+  needsManual: boolean;
 };
 
 export type VisitDetail = VisitSummary & {
@@ -111,6 +127,8 @@ export type MatchResult = {
   homeScore: number | null;
   awayScore: number | null;
   stadiumId: string | null;
+  /** Status do football-data; diferente de FINISHED = ainda não terminou (hoje/ao vivo). */
+  status?: string;
 };
 
 export type CompetitionOption = { code: string; name: string; emblemUrl: string | null };
@@ -149,6 +167,8 @@ export type FanStats = {
   /** Times que aparecem nas partidas registradas (seletor "Desempenho do seu time"). */
   teamsSeen: TeamRef[];
   biggestStadiums: Array<{ id: string; name: string; city: string | null; capacity: number; thumbUrl: string | null }>;
+  /** Palpites com resultado: total, placares exatos e vencedor/empate certo (sem contar os exatos). */
+  predictions: { judged: number; exact: number; winner: number };
 };
 
 export type MeProfile = ApiUser & { homeCity: string | null; favoriteTeam: TeamRef | null };

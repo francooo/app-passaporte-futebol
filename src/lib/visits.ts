@@ -2,15 +2,18 @@ import "server-only";
 import { and, asc, count, desc, eq, inArray, max, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import sharp from "sharp";
-import type { FanStats, MeProfile, TeamRef, VisitDetail, VisitList, VisitPhoto, VisitSummary } from "@shared/api-types";
-import { PHOTO_LIMITS, type visitSchema } from "@shared/schemas";
+import type { FanStats, MeProfile, TeamRef, VisitDetail, VisitList, VisitPhoto, VisitResultState, VisitSummary } from "@shared/api-types";
+import { PHOTO_LIMITS, type predictionSchema, type resultSchema, type visitSchema } from "@shared/schemas";
 import type { z } from "zod";
 import { db } from "@/db";
 import { moderationLog, stadiums, teams, users, visitPhotos, visits } from "@/db/schema";
 import { hitRateLimit, toApiUser } from "@/lib/auth-core";
 import { commonsThumb } from "@/lib/catalog/rules";
 import { USER_AGENT } from "@/lib/catalog/wikidata";
+import { apiFootballEnabled } from "@/lib/matches/api-football";
 import { getMatch } from "@/lib/matches/queries";
+import { resolvePendingResultsQuickly } from "@/lib/results/resolve";
+import { expectedEndAt, isFinalStatus, needsManualResult, predictionOutcome, toScore } from "@/lib/results/rules";
 import { computeStats, type StatVisit } from "@/lib/stats";
 
 /**
@@ -47,6 +50,12 @@ const summaryColumns = {
   date: visits.date,
   homeScore: visits.homeScore,
   awayScore: visits.awayScore,
+  predictedHomeScore: visits.predictedHomeScore,
+  predictedAwayScore: visits.predictedAwayScore,
+  resultStatus: visits.resultStatus,
+  resultSource: visits.resultSource,
+  kickoffAt: visits.kickoffAt,
+  externalFixtureId: visits.externalFixtureId,
   competition: visits.competition,
   note: visits.note,
   matchId: visits.matchId,
@@ -77,7 +86,22 @@ function baseQuery() {
 
 type Row = Awaited<ReturnType<typeof baseQuery>>[number];
 
+/** Situação do resultado para as telas: pendente (com o fim previsto) ou final. */
+function resultState(r: Row): VisitResultState | null {
+  if (r.kind !== "match") return null;
+  const pending = r.resultStatus === "pending";
+  // Busca automática: partida importada, ou manual com a API-Football ligada
+  const automatic = Boolean(r.matchId || r.externalFixtureId || apiFootballEnabled());
+  return {
+    status: pending ? "pending" : "final",
+    source: (r.resultSource as VisitResultState["source"]) ?? null,
+    expectedEndAt: r.kickoffAt ? expectedEndAt(r.kickoffAt).toISOString() : null,
+    needsManual: pending && (!automatic || needsManualResult(r.kickoffAt)),
+  };
+}
+
 function toSummary(r: Row): VisitSummary {
+  const prediction = toScore(r.predictedHomeScore, r.predictedAwayScore);
   return {
     id: r.id,
     kind: r.kind,
@@ -95,6 +119,9 @@ function toSummary(r: Row): VisitSummary {
     homeScore: r.homeScore,
     awayScore: r.awayScore,
     competition: r.competition,
+    prediction,
+    result: resultState(r),
+    predictionOutcome: predictionOutcome(prediction, toScore(r.homeScore, r.awayScore)),
   };
 }
 
@@ -103,6 +130,8 @@ function toSummary(r: Row): VisitSummary {
 export type VisitFilters = { kind?: "visit" | "match" | null; year?: number | null; competition?: string | null };
 
 export async function listVisits(userId: string, filters: VisitFilters = {}): Promise<VisitList> {
+  // Jogos que já terminaram: busca o resultado antes de mostrar (com tempo limitado)
+  await resolvePendingResultsQuickly(userId);
   const where = and(
     eq(visits.userId, userId),
     filters.kind ? eq(visits.kind, filters.kind) : undefined,
@@ -135,6 +164,7 @@ export async function listVisits(userId: string, filters: VisitFilters = {}): Pr
 }
 
 export async function getVisit(userId: string, id: string): Promise<VisitDetail | null> {
+  await resolvePendingResultsQuickly(userId);
   const [row] = await baseQuery()
     .where(and(eq(visits.id, id), eq(visits.userId, userId)))
     .limit(1);
@@ -207,37 +237,58 @@ async function toColumns(userId: string, input: VisitData) {
     note: input.note ?? null,
     date: input.date ? new Date(`${input.date}T00:00:00Z`) : null,
   };
+  const noResult = {
+    homeScore: null,
+    awayScore: null,
+    predictedHomeScore: null,
+    predictedAwayScore: null,
+    resultStatus: null,
+    resultSource: null,
+    kickoffAt: null,
+    externalFixtureId: null,
+    resultCheckedAt: null,
+  };
   if (input.kind === "visit") {
-    return { ...base, matchId: null, homeTeamId: null, awayTeamId: null, homeScore: null, awayScore: null, competition: null };
+    return { ...base, ...noResult, matchId: null, homeTeamId: null, awayTeamId: null, competition: null };
   }
+  const prediction = { predictedHomeScore: input.predictedHomeScore ?? null, predictedAwayScore: input.predictedAwayScore ?? null };
+  const dayOf = (d: Date) => new Date(`${d.toISOString().slice(0, 10)}T00:00:00Z`);
 
   if (input.matchId) {
     const match = await getMatch(input.matchId);
     if (!match) throw new VisitError(400, "Partida não encontrada.", "matchId");
+    const finished = isFinalStatus("football-data", match.status) && match.homeScore != null && match.awayScore != null;
     return {
       ...base,
+      ...noResult,
       // Sem data informada, vale a data da partida
-      date: base.date ?? new Date(`${match.utcDate.toISOString().slice(0, 10)}T00:00:00Z`),
+      date: base.date ?? dayOf(match.utcDate),
       matchId: match.id,
       homeTeamId: match.homeTeamId,
       awayTeamId: match.awayTeamId,
-      homeScore: match.homeScore,
-      awayScore: match.awayScore,
       competition: match.competitionName,
+      kickoffAt: match.utcDate,
+      // Já encerrada: placar oficial. Ainda não: palpite e resultado depois do jogo.
+      ...(finished
+        ? { homeScore: match.homeScore, awayScore: match.awayScore, resultStatus: "final", resultSource: "football-data" }
+        : { ...prediction, resultStatus: "pending" }),
     };
   }
 
   const homeTeamId = await resolveTeam(input.homeTeamId, input.homeTeamName, userId, stadium.country);
   const awayTeamId = await resolveTeam(input.awayTeamId, input.awayTeamName, userId, stadium.country);
   if (homeTeamId && homeTeamId === awayTeamId) throw new VisitError(400, "Mandante e visitante precisam ser diferentes.", "awayTeamName");
+  const common = { ...base, ...noResult, matchId: null, homeTeamId, awayTeamId, competition: input.competition ?? null };
+  if (input.resultPending) {
+    const kickoffAt = input.kickoffAt ? new Date(input.kickoffAt) : new Date();
+    return { ...common, ...prediction, date: base.date ?? dayOf(kickoffAt), kickoffAt, resultStatus: "pending" };
+  }
   return {
-    ...base,
-    matchId: null,
-    homeTeamId,
-    awayTeamId,
+    ...common,
     homeScore: input.homeScore ?? null,
     awayScore: input.awayScore ?? null,
-    competition: input.competition ?? null,
+    resultStatus: "final",
+    resultSource: "manual",
   };
 }
 
@@ -257,6 +308,31 @@ export async function updateVisit(userId: string, id: string, input: VisitData) 
     .where(and(eq(visits.id, id), eq(visits.userId, userId)))
     .returning({ id: visits.id });
   if (!row) throw new VisitError(404, "Registro não encontrado.");
+}
+
+/** Resultado informado à mão: vale sobre a busca automática (que não troca mais). */
+export async function setResult(userId: string, id: string, input: z.output<typeof resultSchema>) {
+  const [row] = await db
+    .update(visits)
+    .set({ homeScore: input.homeScore, awayScore: input.awayScore, resultStatus: "final", resultSource: "manual" })
+    .where(and(eq(visits.id, id), eq(visits.userId, userId), eq(visits.kind, "match")))
+    .returning({ id: visits.id });
+  if (!row) throw new VisitError(404, "Registro não encontrado.");
+}
+
+/** Palpite: só enquanto o resultado não sai. */
+export async function setPrediction(userId: string, id: string, input: z.output<typeof predictionSchema>) {
+  const [current] = await db
+    .select({ status: visits.resultStatus })
+    .from(visits)
+    .where(and(eq(visits.id, id), eq(visits.userId, userId), eq(visits.kind, "match")))
+    .limit(1);
+  if (!current) throw new VisitError(404, "Registro não encontrado.");
+  if (current.status !== "pending") throw new VisitError(400, "O resultado já saiu: o palpite não pode mais mudar.");
+  await db
+    .update(visits)
+    .set({ predictedHomeScore: input.predictedHomeScore, predictedAwayScore: input.predictedAwayScore })
+    .where(eq(visits.id, id));
 }
 
 export async function deleteVisit(userId: string, id: string) {
@@ -366,9 +442,15 @@ export async function statsForUser(userId: string, teamId?: string | null): Prom
     user?.homeCity && user.homeLat != null && user.homeLng != null
       ? { city: user.homeCity, lat: user.homeLat, lng: user.homeLng }
       : null;
+  const outcomes = rows.map((r) => predictionOutcome(toScore(r.predictedHomeScore, r.predictedAwayScore), toScore(r.homeScore, r.awayScore)));
   return {
     ...computeStats(statVisits, { home, teamId: teamId ?? user?.favoriteTeamId ?? null }),
     homeCity: user?.homeCity ?? null,
+    predictions: {
+      judged: outcomes.filter(Boolean).length,
+      exact: outcomes.filter((o) => o === "exact").length,
+      winner: outcomes.filter((o) => o === "winner").length,
+    },
   };
 }
 

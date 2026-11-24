@@ -50,6 +50,13 @@
       "when": 1795016401513,
       "tag": "0006_sessoes_revogaveis",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795529111046,
+      "tag": "0007_palpite_e_resultado",
+      "breakpoints": true
     }
   ]
 }

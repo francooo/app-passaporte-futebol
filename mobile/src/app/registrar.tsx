@@ -13,7 +13,8 @@ import { Stamp } from "@/components/stamp";
 import { TextField } from "@/components/text-field";
 import { Ticket } from "@/components/ticket";
 import { TeamInput, type ManualTeam } from "@/components/team-input";
-import { UpcomingMatches } from "@/components/upcoming-matches";
+import { ScoreInput } from "@/components/score-input";
+import { formatKickoff, UpcomingMatches } from "@/components/upcoming-matches";
 import { Chip, Scoreline } from "@/components/visit-bits";
 import { ApiRequestError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -24,9 +25,29 @@ import { colors, font, radius, type } from "@/theme";
 
 type Kind = "visit" | "match";
 type Step = 1 | 2 | 3;
-type Manual = { home: ManualTeam; away: ManualTeam; homeScore: string; awayScore: string; competition: string };
+/** pending: o jogo ainda não terminou — homeScore/awayScore viram palpite (opcional) e kickoff é o início ("HH:MM"). */
+type Manual = { home: ManualTeam; away: ManualTeam; homeScore: string; awayScore: string; competition: string; pending: boolean; kickoff: string };
+/** Palpite digitado (texto dos campos). */
+type Guess = { home: string; away: string };
 
 const emptyTeam: ManualTeam = { id: null, name: "", crestUrl: null };
+const emptyGuess: Guess = { home: "", away: "" };
+const isGoals = (s: string) => /^\d{1,2}$/.test(s);
+const guessFilled = (g: Guess) => isGoals(g.home) && isGoals(g.away);
+/** Partida escolhida que ainda não terminou (hoje/ao vivo): o placar vira palpite. */
+const isOpenMatch = (m: MatchResult | null) => Boolean(m?.status && m.status !== "FINISHED");
+const isLive = (m: MatchResult) => m.status === "IN_PLAY" || m.status === "PAUSED";
+/** "21:30" agora (fuso do aparelho). */
+const nowTime = () => {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+/** Máscara HH:MM. */
+const maskTime = (t: string) => {
+  const digits = t.replace(/\D/g, "").slice(0, 4);
+  return digits.length > 2 ? `${digits.slice(0, 2)}:${digits.slice(2)}` : digits;
+};
+const validTime = (t: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
 const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
 
 /**
@@ -46,6 +67,7 @@ export default function RegistrarScreen() {
   const [dateText, setDateText] = useState("");
   const [match, setMatch] = useState<MatchResult | null>(null);
   const [manual, setManual] = useState<Manual | null>(null);
+  const [guess, setGuess] = useState<Guess>(emptyGuess);
   const [photos, setPhotos] = useState<PickedPhoto[]>([]);
   const [note, setNote] = useState("");
   const [status, setStatus] = useState<{ busy: boolean; message: string | null; error: string | null }>({ busy: false, message: null, error: null });
@@ -85,17 +107,33 @@ export default function RegistrarScreen() {
     if (!stadium) return;
     setStatus({ busy: true, message: "Criando carimbo…", error: null });
     const body: VisitInput = { kind, stadiumId: stadium.id, date: date ?? null, note: note.trim() || null };
-    if (kind === "match" && match) body.matchId = match.id;
+    if (kind === "match" && match) {
+      body.matchId = match.id;
+      if (isOpenMatch(match) && guessFilled(guess)) {
+        Object.assign(body, { predictedHomeScore: Number(guess.home), predictedAwayScore: Number(guess.away) });
+      }
+    }
     if (kind === "match" && !match && manual) {
       Object.assign(body, {
         homeTeamId: manual.home.id,
         homeTeamName: manual.home.name,
         awayTeamId: manual.away.id,
         awayTeamName: manual.away.name,
-        homeScore: Number(manual.homeScore),
-        awayScore: Number(manual.awayScore),
         competition: manual.competition || null,
       });
+      if (manual.pending) {
+        const typed = { home: manual.homeScore, away: manual.awayScore };
+        const [h, min] = (manual.kickoff || nowTime()).split(":").map(Number);
+        const [y, mo, d] = (date ?? todayIso()).split("-").map(Number);
+        Object.assign(body, {
+          resultPending: true,
+          // Início no fuso do aparelho, no dia escolhido (ou hoje)
+          kickoffAt: new Date(y, mo - 1, d, h, min).toISOString(),
+          ...(guessFilled(typed) ? { predictedHomeScore: Number(typed.home), predictedAwayScore: Number(typed.away) } : {}),
+        });
+      } else {
+        Object.assign(body, { homeScore: Number(manual.homeScore), awayScore: Number(manual.awayScore) });
+      }
     }
 
     let visit: VisitDetail;
@@ -194,6 +232,7 @@ export default function RegistrarScreen() {
             onPick={(m) => {
               setMatch(m);
               setManual(null);
+              setGuess(emptyGuess);
               if (!date) setDateText(toBrDate(m.utcDate.slice(0, 10)));
               go(3);
             }}
@@ -226,12 +265,33 @@ export default function RegistrarScreen() {
                 <Scoreline
                   home={match ? match.home : manual!.home}
                   away={match ? match.away : manual!.away}
-                  homeScore={match ? match.homeScore : Number(manual!.homeScore)}
-                  awayScore={match ? match.awayScore : Number(manual!.awayScore)}
+                  homeScore={match ? match.homeScore : manual!.pending ? null : Number(manual!.homeScore)}
+                  awayScore={match ? match.awayScore : manual!.pending ? null : Number(manual!.awayScore)}
                 />
                 <Text style={[type.suave, styles.center]}>
-                  {match ? match.competition.name : `${manual!.competition || "Competição não informada"} · preenchido à mão`}
+                  {match
+                    ? `${match.competition.name}${isOpenMatch(match) ? ` · começa ${formatKickoff(match.utcDate)}` : ""}`
+                    : `${manual!.competition || "Competição não informada"} · preenchido à mão`}
                 </Text>
+                {isOpenMatch(match) && (
+                  <View style={styles.guessBox}>
+                    <Text style={styles.label}>Seu palpite (opcional)</Text>
+                    <View style={styles.scoreRow}>
+                      <ScoreInput label="Palpite: gols do mandante" value={guess.home} onChange={(home) => setGuess((g) => ({ ...g, home }))} invalid={false} />
+                      <Text style={styles.times}>×</Text>
+                      <ScoreInput label="Palpite: gols do visitante" value={guess.away} onChange={(away) => setGuess((g) => ({ ...g, away }))} invalid={false} />
+                    </View>
+                    <Text style={[type.suave, styles.small, styles.center]}>
+                      O jogo ainda não terminou: o resultado chega sozinho depois do fim e é comparado com o palpite.
+                    </Text>
+                  </View>
+                )}
+                {!match && manual?.pending && (
+                  <Text style={styles.warn}>
+                    {guessFilled({ home: manual.homeScore, away: manual.awayScore }) ? `Seu palpite: ${manual.homeScore} × ${manual.awayScore}. ` : "Sem palpite. "}
+                    O resultado chega depois do jogo (ou informe no carimbo).
+                  </Text>
+                )}
                 {match?.stadiumId && match.stadiumId !== stadium.id && (
                   <Text style={styles.warn}>Pelo nosso catálogo, essa partida foi em outro estádio. Confira se é o jogo certo ou volte e troque.</Text>
                 )}
@@ -525,8 +585,9 @@ function MatchStep({
                 style={({ pressed }) => [styles.matchCard, selected?.id === m.id && styles.matchSelected, pressed && { opacity: 0.85 }, state.loading && { opacity: 0.6 }]}
               >
                 <Scoreline home={m.home} away={m.away} homeScore={m.homeScore} awayScore={m.awayScore} size={36} />
+                {isOpenMatch(m) && <Text style={[type.rotulo, styles.openBadge]}>{isLive(m) ? "Ao vivo" : "Ainda não começou"}</Text>}
                 <Text style={[type.suave, styles.center]}>
-                  {m.competition.name} · {formatDay(m.utcDate)}
+                  {m.competition.name} · {isOpenMatch(m) ? formatKickoff(m.utcDate) : formatDay(m.utcDate)}
                 </Text>
               </Pressable>
             ))}
@@ -541,14 +602,24 @@ function MatchStep({
 }
 
 function ManualForm({ initial, competitions, onSubmit }: { initial: Manual | null; competitions: CompetitionOption[]; onSubmit: (m: Manual) => void }) {
-  const [value, setValue] = useState<Manual>(initial ?? { home: emptyTeam, away: emptyTeam, homeScore: "", awayScore: "", competition: "" });
+  const [value, setValue] = useState<Manual>(
+    initial ?? { home: emptyTeam, away: emptyTeam, homeScore: "", awayScore: "", competition: "", pending: false, kickoff: "" },
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   function submit() {
     const next: Record<string, string> = {};
     if (!value.home.name.trim()) next.home = "Informe o mandante.";
     if (!value.away.name.trim()) next.away = "Informe o visitante.";
-    if (!/^\d{1,2}$/.test(value.homeScore) || !/^\d{1,2}$/.test(value.awayScore)) next.score = "Informe o placar (ex.: 2 e 1).";
+    if (value.pending) {
+      // Palpite opcional, mas com os dois lados
+      if ((value.homeScore !== "" || value.awayScore !== "") && !guessFilled({ home: value.homeScore, away: value.awayScore })) {
+        next.score = "Preencha os dois lados do palpite (ou deixe os dois vazios).";
+      }
+      if (!validTime(value.kickoff)) next.kickoff = "Informe o horário de início (ex.: 21:30).";
+    } else if (!isGoals(value.homeScore) || !isGoals(value.awayScore)) {
+      next.score = "Informe o placar (ex.: 2 e 1).";
+    }
     if (value.home.name.trim() && value.home.name.trim().toLowerCase() === value.away.name.trim().toLowerCase()) next.away = "Mandante e visitante precisam ser diferentes.";
     setErrors(next);
     if (!Object.keys(next).length) onSubmit({ ...value, competition: value.competition.trim() });
@@ -560,7 +631,34 @@ function ManualForm({ initial, competitions, onSubmit }: { initial: Manual | nul
       <Text style={type.corpo}>Não encontrou a partida? Registre à mão.</Text>
       <TeamInput label="Mandante" value={value.home} onChange={(home) => setValue((v) => ({ ...v, home }))} error={errors.home} />
       <TeamInput label="Visitante" value={value.away} onChange={(away) => setValue((v) => ({ ...v, away }))} error={errors.away} />
-      <Text style={styles.label}>Placar</Text>
+      <Pressable
+        onPress={() => {
+          setValue((v) => ({ ...v, pending: !v.pending, kickoff: !v.pending && !v.kickoff ? nowTime() : v.kickoff }));
+          setErrors({});
+        }}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: value.pending }}
+        style={styles.pendingToggle}
+      >
+        <View style={[styles.checkbox, value.pending && styles.checkboxOn]}>{value.pending && <Text style={styles.check}>✓</Text>}</View>
+        <View style={styles.flex}>
+          <Text style={styles.label}>O jogo ainda não terminou</Text>
+          <Text style={[type.suave, styles.small]}>O placar vira seu palpite. O resultado é buscado depois do jogo, ou você informa no carimbo.</Text>
+        </View>
+      </Pressable>
+      {value.pending && (
+        <TextField
+          label="Horário de início"
+          icon="calendar"
+          value={value.kickoff}
+          onChangeText={(t) => setValue((v) => ({ ...v, kickoff: maskTime(t) }))}
+          placeholder="HH:MM"
+          keyboardType="number-pad"
+          maxLength={5}
+          error={errors.kickoff}
+        />
+      )}
+      <Text style={styles.label}>{value.pending ? "Seu palpite (opcional)" : "Placar"}</Text>
       <View style={styles.scoreRow}>
         <ScoreInput label="Gols do mandante" value={value.homeScore} onChange={(homeScore) => setValue((v) => ({ ...v, homeScore }))} invalid={!!errors.score} />
         <Text style={styles.times}>×</Text>
@@ -583,19 +681,6 @@ function ManualForm({ initial, competitions, onSubmit }: { initial: Manual | nul
       )}
       <Button onPress={submit}>Usar preenchimento manual</Button>
     </Ticket>
-  );
-}
-
-function ScoreInput({ label, value, onChange, invalid }: { label: string; value: string; onChange: (v: string) => void; invalid: boolean }) {
-  return (
-    <TextInput
-      accessibilityLabel={label}
-      value={value}
-      onChangeText={(t) => onChange(t.replace(/\D/g, "").slice(0, 2))}
-      keyboardType="number-pad"
-      maxLength={2}
-      style={[styles.scoreInput, invalid && { borderColor: colors.erro }]}
-    />
   );
 }
 
@@ -712,18 +797,12 @@ const styles = StyleSheet.create({
   matchSelected: { borderWidth: 2, borderColor: colors.estadio },
   manualTitle: { fontSize: 24 },
   scoreRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  scoreInput: {
-    width: 64,
-    height: 56,
-    textAlign: "center",
-    fontFamily: font.display,
-    fontSize: 28,
-    color: colors.estadio,
-    borderRadius: radius.campo,
-    borderWidth: 1,
-    borderColor: colors.linha,
-    backgroundColor: colors.branco,
-  },
+  guessBox: { alignItems: "center", gap: 8, marginTop: 4, padding: 12, borderRadius: 8, backgroundColor: colors.partida },
+  openBadge: { alignSelf: "center", fontSize: 11, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, overflow: "hidden", backgroundColor: colors.partida },
+  pendingToggle: { flexDirection: "row", alignItems: "flex-start", gap: 10, padding: 12, borderRadius: radius.campo, borderWidth: 1, borderColor: colors.linha, backgroundColor: colors.branco },
+  checkbox: { width: 22, height: 22, marginTop: 1, borderRadius: 5, borderWidth: 2, borderColor: colors.estadio, alignItems: "center", justifyContent: "center" },
+  checkboxOn: { backgroundColor: colors.estadio },
+  check: { color: colors.marfim, fontSize: 14, lineHeight: 16, fontFamily: font.sansSemi },
   times: { fontFamily: font.display, fontSize: 24, color: colors.suave },
   options: { borderRadius: radius.campo, borderWidth: 1, borderColor: colors.linha, backgroundColor: colors.branco, overflow: "hidden" },
   option: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, minHeight: 44 },

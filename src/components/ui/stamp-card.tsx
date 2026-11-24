@@ -17,8 +17,14 @@ type Props = {
   tone?: "verde" | "azul";
   /** "row": linha do mobile (padrão). "tile": cartão vertical para grids no desktop. */
   layout?: "row" | "tile";
+  /** Etiqueta curta sob a cidade (ex.: "Aguardando resultado", "Na mosca!"). */
+  tag?: string | null;
   className?: string;
 };
+
+function Tag({ text }: { text: string }) {
+  return <span className="rotulo-display mt-1 inline-block rounded bg-ingresso px-1.5 text-xs text-estadio">{text}</span>;
+}
 
 const dateFormat = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
 
@@ -46,7 +52,7 @@ function KindBadge({ kind, date }: { kind: VisitKind; date: Date | null }) {
 }
 
 /** Carimbo do "Meu Passaporte": selo, estádio/cidade, tipo escrito e data. */
-export function StampCard({ href, stadium, city, stateCode, kind, date, photoUrl, tone, layout = "row", className }: Props) {
+export function StampCard({ href, stadium, city, stateCode, kind, date, photoUrl, tone, layout = "row", tag, className }: Props) {
   const place = stateCode ? `${city} - ${stateCode}` : city;
   const card = "papel rounded-2xl border border-estadio/10 shadow-sm transition-transform hover:-translate-y-0.5";
 
@@ -60,6 +66,7 @@ export function StampCard({ href, stadium, city, stateCode, kind, date, photoUrl
             <KitIcon name="location-pin" size={18} />
             {city}
           </p>
+          {tag && <Tag text={tag} />}
         </div>
         <div className="mt-auto flex w-full items-center justify-center gap-3 border-t border-dashed border-linha pt-4">
           <KindBadge kind={kind} date={date} />
@@ -77,6 +84,7 @@ export function StampCard({ href, stadium, city, stateCode, kind, date, photoUrl
           <KitIcon name="location-pin" size={16} />
           <span className="truncate">{city}</span>
         </p>
+        {tag && <Tag text={tag} />}
       </div>
       <div className="flex w-[5.5rem] flex-col items-center gap-1 text-center">
         <KindBadge kind={kind} date={date} />

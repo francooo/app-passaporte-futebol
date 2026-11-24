@@ -196,6 +196,8 @@ export const teams = pgTable(
     crestUrl: text("crest_url"),
     /** Nome do estádio informado pelo provedor (liga partidas ao catálogo). */
     venueName: text("venue_name"),
+    /** Id do time na API-Football (2ª fonte de resultados), guardado na primeira busca. */
+    apiFootballId: text("api_football_id"),
     /** Origem: "football-data" (importado) ou null (criado por usuário no preenchimento manual). */
     provider: text("provider"),
     providerId: text("provider_id"),
@@ -266,14 +268,28 @@ export const visits = pgTable(
     matchId: text("match_id").references(() => matches.id, { onDelete: "set null" }),
     homeTeamId: text("home_team_id").references(() => teams.id, { onDelete: "set null" }),
     awayTeamId: text("away_team_id").references(() => teams.id, { onDelete: "set null" }),
+    /** Resultado oficial (90 min + prorrogação). Null enquanto o jogo não termina (resultStatus "pending"). */
     homeScore: integer("home_score"),
     awayScore: integer("away_score"),
+    /** Palpite do torcedor, informado quando o carimbo é criado antes do fim do jogo. */
+    predictedHomeScore: integer("predicted_home_score"),
+    predictedAwayScore: integer("predicted_away_score"),
+    /** Partida: "pending" (aguardando o resultado) ou "final". Null em visita. */
+    resultStatus: text("result_status"),
+    /** De onde veio o resultado: "football-data", "api-football" ou "manual". */
+    resultSource: text("result_source"),
+    /** Início do jogo; o término previsto (início + 2 h) libera a busca do resultado. */
+    kickoffAt: timestamp("kickoff_at", { mode: "date" }),
+    /** Jogo na API-Football (carimbos do preenchimento manual). */
+    externalFixtureId: text("external_fixture_id"),
+    /** Última busca do resultado (evita repetir a cada abertura). */
+    resultCheckedAt: timestamp("result_checked_at", { mode: "date" }),
     /** Nome da competição (vem da partida ou do preenchimento manual). */
     competition: text("competition"),
     note: text("note"),
     createdAt: createdAt(),
   },
-  (t) => [index("visits_user_idx").on(t.userId, t.date)],
+  (t) => [index("visits_user_idx").on(t.userId, t.date), index("visits_pending_idx").on(t.resultStatus, t.kickoffAt)],
 );
 
 export const visitPhotos = pgTable(

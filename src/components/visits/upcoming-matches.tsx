@@ -20,7 +20,7 @@ export function formatKickoff(utcDate: string, format = when) {
 const noSubscribe = () => () => {};
 
 /** Data/hora do jogo: igual no servidor e na hidratação; em seguida no fuso do aparelho. */
-function Kickoff({ utcDate }: { utcDate: string }) {
+export function Kickoff({ utcDate }: { utcDate: string }) {
   const text = useSyncExternalStore(
     noSubscribe,
     () => formatKickoff(utcDate),

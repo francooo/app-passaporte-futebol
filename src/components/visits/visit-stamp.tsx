@@ -13,6 +13,7 @@ export function VisitStamp({ visit: v }: { visit: VisitSummary }) {
     date: v.date ? new Date(y, m - 1, d) : null,
     photoUrl: v.stadium.thumbUrl,
     tone: v.kind === "match" ? ("azul" as const) : ("verde" as const),
+    tag: v.result?.status === "pending" ? "Aguardando resultado" : v.predictionOutcome === "exact" ? "Palpite na mosca!" : null,
   };
   return (
     <>

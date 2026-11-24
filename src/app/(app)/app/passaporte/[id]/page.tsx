@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import { KitIcon } from "@/components/ui/kit-icon";
 import { Stamp } from "@/components/ui/stamp";
 import { Ticket } from "@/components/ui/ticket";
-import { Scoreline } from "@/components/visits/team-crest";
+import { ResultPanel } from "@/components/visits/result-panel";
 import { DeleteVisit, VisitPhotos } from "@/components/visits/visit-manager";
 import { formatDay } from "@/lib/client-api";
 import { cn } from "@/lib/cn";
@@ -67,10 +67,7 @@ async function Carimbo({ params, searchParams }: PageProps<"/app/passaporte/[id]
           </div>
 
           {isMatch && (v.home || v.away) && (
-            <section aria-label="Resultado" className="rounded-2xl border border-linha bg-white p-4 lg:p-6">
-              <Scoreline home={v.home} away={v.away} homeScore={v.homeScore} awayScore={v.awayScore} size="lg" />
-              {v.competition && <p className="mt-2 text-center text-suave">{v.competition}</p>}
-            </section>
+            <ResultPanel visit={v} />
           )}
 
           {v.note && (

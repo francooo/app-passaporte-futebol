@@ -13,6 +13,8 @@ type Props = {
   date: Date | null;
   photo?: ImageSourcePropType | null;
   tone?: "verde" | "azul";
+  /** Etiqueta curta sob a cidade (ex.: "Aguardando resultado"). */
+  tag?: string | null;
   onPress?: () => void;
 };
 
@@ -24,14 +26,14 @@ export function formatStampDate(date: Date | null) {
 }
 
 /** Linha do "Meu Passaporte": selo, estádio/cidade, tipo escrito (VISITA/PARTIDA) e data. */
-export function StampCard({ stadium, city, stateCode, kind, date, photo, tone, onPress }: Props) {
+export function StampCard({ stadium, city, stateCode, kind, date, photo, tone, tag, onPress }: Props) {
   const isMatch = kind === "match";
   const label = isMatch ? "Partida" : "Visita";
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${stadium}, ${city}. ${label}, ${formatStampDate(date)}`}
+      accessibilityLabel={`${stadium}, ${city}. ${label}, ${formatStampDate(date)}${tag ? `. ${tag}` : ""}`}
       style={({ pressed }) => [styles.card, pressed && { opacity: 0.85 }]}
     >
       <Stamp name={stadium} place={stateCode ? `${city} - ${stateCode}` : city} photo={photo} tone={tone} size={80} />
@@ -45,6 +47,7 @@ export function StampCard({ stadium, city, stateCode, kind, date, photo, tone, o
             {city}
           </Text>
         </View>
+        {tag && <Text style={[type.rotulo, styles.tag]}>{tag}</Text>}
       </View>
       <View style={styles.kind}>
         <KitIcon name={isMatch ? "football" : "stadium"} size={32} />
@@ -80,4 +83,5 @@ const styles = StyleSheet.create({
   kind: { width: 88, alignItems: "center", gap: 4 },
   badge: { fontSize: 13, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, overflow: "hidden" },
   date: { fontFamily: font.displayMedium, fontSize: 13, color: colors.estadio },
+  tag: { alignSelf: "flex-start", marginTop: 6, fontSize: 11, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, overflow: "hidden", backgroundColor: colors.ingresso },
 });
