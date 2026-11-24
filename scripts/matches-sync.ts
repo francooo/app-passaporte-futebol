@@ -3,11 +3,17 @@
  *   npm run matches:sync              (todas as competições do plano gratuito)
  *   npm run matches:sync -- BSA CL    (competições específicas)
  *   npm run matches:sync -- --proximos [BSA …]   (só os jogos agendados dos próximos 30 dias)
+ *   npm run matches:sync -- --api-sports         (NBB e Superliga: jogos de ontem, hoje e amanhã)
  */
 import { FREE_COMPETITIONS } from "@/lib/matches/football-data";
 import { syncCompetition, syncUpcoming } from "@/lib/matches/sync";
+import { syncApiSports } from "@/lib/matches/sync-api-sports";
 
 async function main() {
+  if (process.argv.includes("--api-sports")) {
+    for (const r of await syncApiSports()) console.log(`${r.sport} ${r.day}: ${r.error ? `ERRO ${r.error}` : `${r.games} jogos`}`);
+    return;
+  }
   const args = process.argv.slice(2).filter((a) => /^[A-Z0-9]{2,4}$/.test(a));
   const targets = args.length ? args : [...FREE_COMPETITIONS];
   const failures: string[] = [];

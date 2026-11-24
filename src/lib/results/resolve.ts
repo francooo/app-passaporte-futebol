@@ -1,8 +1,10 @@
 import "server-only";
-import { and, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, between, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matches, teams, visits } from "@/db/schema";
 import { apiFootball, apiFootballEnabled } from "@/lib/matches/api-football";
+import { apiSports, apiSportsEnabled } from "@/lib/matches/api-sports";
+import type { ApiSport } from "@/lib/matches/api-sports-parse";
 import { footballData } from "@/lib/matches/football-data";
 import { SPORT_INFO, SPORTS, type Sport } from "@shared/sports";
 import { expectedEndAt, GIVE_UP_MS, isFinalStatus, officialFdScore, RECHECK_MS, type ResultProvider, type Score } from "./rules";
@@ -11,7 +13,7 @@ import { pickFixture, pickTeam, teamSearchTerm } from "./pick";
 /**
  * Busca do resultado dos carimbos "pending" depois do fim previsto do jogo (início + 2 h).
  * Chamada ao abrir o passaporte/carimbo (poucos por vez, só do usuário) e pelo cron diário (todos).
- * Fontes: tabela `matches` (sync do football-data) → football-data /matches/{id} → API-Football.
+ * Fontes: tabela `matches` (sync do football-data e da API-Sports) → provedor da partida → API-Football (futebol manual).
  * Nunca troca um resultado já final (inclusive o informado à mão).
  */
 
@@ -107,6 +109,7 @@ async function setFinal(visitId: string, score: Score, source: ResultProvider) {
 async function resolveFromMatch(v: Pending) {
   const [match] = await db.select().from(matches).where(eq(matches.id, v.matchId!)).limit(1);
   if (!match) return false;
+  if (match.provider === "api-basketball" || match.provider === "api-volleyball") return resolveFromApiSports(v, match);
   if (match.provider !== "football-data") return false;
 
   let { status, homeScore, awayScore, utcDate } = match;
@@ -133,9 +136,53 @@ async function resolveFromMatch(v: Pending) {
 
 const AF_DATE_WINDOW_MS = 30 * 60 * 60 * 1000;
 
-/** Preenchimento manual: só futebol tem fonte por enquanto (API-Football). */
+/** Preenchimento manual: futebol pela API-Football; vôlei e basquete pela partida importada (NBB, Superliga). */
 async function resolveManual(v: Pending) {
   if (v.sport === "futebol") return resolveFromApiFootball(v);
+  if (v.sport === "volei" || v.sport === "basquete") return linkImportedMatch(v);
+  return false;
+}
+
+const LINK_WINDOW_MS = 30 * 60 * 60 * 1000;
+
+/** Acha a partida importada com os mesmos times perto do horário informado e liga o carimbo a ela. */
+async function linkImportedMatch(v: Pending) {
+  if (!v.homeTeamId || !v.awayTeamId) return false;
+  const [match] = await db
+    .select()
+    .from(matches)
+    .where(
+      and(
+        eq(matches.sport, v.sport),
+        eq(matches.homeTeamId, v.homeTeamId),
+        eq(matches.awayTeamId, v.awayTeamId),
+        between(matches.utcDate, new Date(v.kickoffAt.getTime() - LINK_WINDOW_MS), new Date(v.kickoffAt.getTime() + LINK_WINDOW_MS)),
+      ),
+    )
+    .limit(1);
+  if (!match) return false;
+  await db.update(visits).set({ matchId: match.id, kickoffAt: match.utcDate }).where(eq(visits.id, v.id));
+  return resolveFromMatch({ ...v, matchId: match.id, kickoffAt: match.utcDate });
+}
+
+/** Partida de NBB/Superliga: relê o jogo na API-Sports se ainda não terminou e copia o placar. */
+async function resolveFromApiSports(v: Pending, match: typeof matches.$inferSelect) {
+  const provider = match.provider as "api-basketball" | "api-volleyball";
+  let { status, homeScore, awayScore, utcDate } = match;
+  if (!isFinalStatus(provider, status) && apiSportsEnabled()) {
+    const fresh = await apiSports.game(match.sport as ApiSport, match.providerId);
+    if (fresh) {
+      ({ status, homeScore, awayScore, utcDate } = fresh);
+      await db.update(matches).set({ status, homeScore, awayScore, utcDate }).where(eq(matches.id, match.id));
+    }
+  }
+  if (isFinalStatus(provider, status) && homeScore != null && awayScore != null) {
+    await setFinal(v.id, { home: homeScore, away: awayScore }, provider);
+    return true;
+  }
+  if (utcDate.getTime() !== v.kickoffAt.getTime()) {
+    await db.update(visits).set({ kickoffAt: utcDate }).where(eq(visits.id, v.id));
+  }
   return false;
 }
 

@@ -12,6 +12,8 @@ import { hitRateLimit, toApiUser } from "@/lib/auth-core";
 import { commonsThumb } from "@/lib/catalog/rules";
 import { USER_AGENT } from "@/lib/catalog/wikidata";
 import { apiFootballEnabled } from "@/lib/matches/api-football";
+import { apiSportsEnabled } from "@/lib/matches/api-sports";
+import { learnHomeVenue } from "@/lib/matches/sync-api-sports";
 import { getMatch } from "@/lib/matches/queries";
 import { resolvePendingResultsQuickly } from "@/lib/results/resolve";
 import { expectedEndAt, isFinalStatus, needsManualResult, predictionOutcome, toScore, type ResultProvider } from "@/lib/results/rules";
@@ -92,8 +94,13 @@ type Row = Awaited<ReturnType<typeof baseQuery>>[number];
 function resultState(r: Row): VisitResultState | null {
   if (r.kind !== "match") return null;
   const pending = r.resultStatus === "pending";
-  // Busca automática: partida importada, ou futebol manual com a API-Football ligada
-  const automatic = Boolean(r.matchId || r.externalFixtureId || (r.sport === "futebol" && apiFootballEnabled()));
+  // Busca automática: partida importada, futebol manual com a API-Football, ou vôlei/basquete com a API-Sports
+  const automatic = Boolean(
+    r.matchId ||
+      r.externalFixtureId ||
+      (r.sport === "futebol" && apiFootballEnabled()) ||
+      ((r.sport === "volei" || r.sport === "basquete") && apiSportsEnabled()),
+  );
   return {
     status: pending ? "pending" : "final",
     source: (r.resultSource as VisitResultState["source"]) ?? null,
@@ -269,6 +276,8 @@ async function toColumns(userId: string, input: VisitData) {
     const match = await getMatch(input.matchId);
     if (!match) throw new VisitError(400, "Partida não encontrada.", "matchId");
     const provider = match.provider as ResultProvider;
+    // Partida sem local (vôlei): o carimbo ensina o ginásio do mandante
+    if (!match.stadiumId) await learnHomeVenue(match.homeTeamId, stadium.id);
     const finished = isFinalStatus(provider, match.status) && match.homeScore != null && match.awayScore != null;
     return {
       ...base,
@@ -292,6 +301,7 @@ async function toColumns(userId: string, input: VisitData) {
   const homeTeamId = await resolveTeam(input.homeTeamId, input.homeTeamName, userId, stadium.country, input.sport);
   const awayTeamId = await resolveTeam(input.awayTeamId, input.awayTeamName, userId, stadium.country, input.sport);
   if (homeTeamId && homeTeamId === awayTeamId) throw new VisitError(400, "Mandante e visitante precisam ser diferentes.", "awayTeamName");
+  if (input.sport === "volei" || input.sport === "basquete") await learnHomeVenue(homeTeamId, stadium.id);
   const common = { ...base, ...noResult, matchId: null, homeTeamId, awayTeamId, competition: input.competition ?? null };
   if (input.resultPending) {
     const kickoffAt = input.kickoffAt ? new Date(input.kickoffAt) : new Date();

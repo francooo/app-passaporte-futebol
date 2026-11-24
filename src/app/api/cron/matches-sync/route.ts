@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { FREE_COMPETITIONS } from "@/lib/matches/football-data";
 import { competitionsDueForSync, syncCompetition, syncUpcoming } from "@/lib/matches/sync";
+import { apiSportsEnabled } from "@/lib/matches/api-sports";
+import { syncApiSports } from "@/lib/matches/sync-api-sports";
 import { resolvePendingResults } from "@/lib/results/resolve";
 
 // football-data.org no plano gratuito: 10 requisições/min (~6,5 s por chamada).
@@ -14,6 +16,7 @@ const RESULTS_PER_RUN = 10;
 
 /**
  * Job diário (vercel.json). A Vercel chama com "Authorization: Bearer $CRON_SECRET".
+ * 0. NBB e Superliga (API-Sports): jogos de ontem, hoje e amanhã (6 chamadas, ~40 s).
  * 1. Próximos jogos (30 dias) de todas as competições: 1 chamada cada (~85 s), para o registro e o mapa.
  * 2. Resultado dos carimbos criados antes do fim do jogo (palpite) que ninguém abriu desde então.
  * 3. No tempo que sobra, resultados e times das competições sincronizadas há mais tempo.
@@ -25,6 +28,14 @@ export async function GET(request: Request) {
   }
 
   const started = Date.now();
+  let apiSportsSummary: Awaited<ReturnType<typeof syncApiSports>> | string = "desligado";
+  if (apiSportsEnabled()) {
+    try {
+      apiSportsSummary = await syncApiSports();
+    } catch (error) {
+      apiSportsSummary = (error as Error).message.slice(0, 160);
+    }
+  }
   const upcoming: Array<{ code: string; scheduled?: number; error?: string }> = [];
   for (const code of FREE_COMPETITIONS) {
     try {
@@ -53,5 +64,5 @@ export async function GET(request: Request) {
       done.push({ code, error: (error as Error).message.slice(0, 160) });
     }
   }
-  return NextResponse.json({ upcoming, results, done, seconds: Math.round((Date.now() - started) / 1000) });
+  return NextResponse.json({ apiSports: apiSportsSummary, upcoming, results, done, seconds: Math.round((Date.now() - started) / 1000) });
 }
