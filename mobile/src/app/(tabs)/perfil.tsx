@@ -1,5 +1,6 @@
+import { router, type Href } from "expo-router";
 import { useState } from "react";
-import { Image, Linking, StyleSheet, Text, View } from "react-native";
+import { Image, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { Button } from "@/components/button";
 import { KitIcon, type KitIconName } from "@/components/kit-icon";
 import { ProfileSettings } from "@/components/profile-settings";
@@ -39,6 +40,19 @@ export default function PerfilScreen() {
           <Text style={[type.rotulo, styles.plan]}>{user?.premium ? "Premium" : "Plano gratuito"}</Text>
         </View>
       </View>
+
+      {(user?.role === "moderator" || user?.role === "admin") && (
+        <Pressable onPress={() => router.push("/moderacao" as Href)} accessibilityRole="button" style={styles.item}>
+          <View style={styles.itemIcon}>
+            <KitIcon name="stamp-visita" size={26} />
+          </View>
+          <View style={styles.flex}>
+            <Text style={[type.titulo, styles.itemTitle]}>Moderação</Text>
+            <Text style={type.suave}>Aprovar locais e times cadastrados pelos usuários.</Text>
+          </View>
+          <KitIcon name="arrow-right" size={20} />
+        </Pressable>
+      )}
 
       <Text style={[type.titulo, styles.subtitle]} accessibilityRole="header">
         Cidade e time

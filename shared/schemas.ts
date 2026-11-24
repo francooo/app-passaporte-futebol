@@ -149,6 +149,35 @@ export const venueSchema = z.object({
 
 export type VenueInput = z.input<typeof venueSchema>;
 
+// ── Moderação (aprovar com correções, mesclar com um cadastro existente, recusar) ──
+
+// Sem defaults: campo ausente = não mexer (venueSchema tem defaults de cadastro)
+const venueEdits = z
+  .object({
+    name: z.string().trim().min(3, "Informe o nome do local.").max(120),
+    city: z.string().trim().min(2, "Informe a cidade.").max(80),
+    state: optionalText(40),
+    sports: z.array(z.enum(SPORTS)).min(1, "Escolha pelo menos um esporte.").max(SPORTS.length),
+    venueType: z.enum(VENUE_TYPES),
+    lat: z.number().min(-90).max(90).nullable(),
+    lng: z.number().min(-180).max(180).nullable(),
+  })
+  .partial();
+const teamEdits = z
+  .object({ name: z.string().trim().min(2, "Informe o nome do time.").max(80), shortName: optionalText(40) })
+  .partial();
+const merge = z.object({ action: z.literal("merge"), targetId: z.string().min(1, "Escolha o cadastro certo.") });
+const reject = z.object({ action: z.literal("reject") });
+
+export const moderationVenueSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("approve"), edits: venueEdits.optional() }),
+  merge,
+  reject,
+]);
+export const moderationTeamSchema = z.discriminatedUnion("action", [z.object({ action: z.literal("approve"), edits: teamEdits.optional() }), merge, reject]);
+export type ModerationVenueInput = z.input<typeof moderationVenueSchema>;
+export type ModerationTeamInput = z.input<typeof moderationTeamSchema>;
+
 /** Perfil: cidade onde mora (base dos km viajados) e time do coração. */
 export const profileSchema = z.object({
   homeCity: optionalText(120),

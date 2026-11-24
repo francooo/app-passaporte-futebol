@@ -13,7 +13,8 @@
     "test": "vitest run",
     "catalog:sync": "tsx --conditions=react-server --env-file=.env.local scripts/catalog-sync.ts",
     "gen:world-map": "tsx scripts/gen-world-map.ts",
-    "matches:sync": "tsx --conditions=react-server --env-file=.env.local scripts/matches-sync.ts"
+    "matches:sync": "tsx --conditions=react-server --env-file=.env.local scripts/matches-sync.ts",
+    "user:role": "tsx --conditions=react-server --env-file=.env.local scripts/set-role.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",

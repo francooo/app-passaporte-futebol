@@ -22,6 +22,13 @@ export async function withUser(request: Request, handler: (user: RequestUser) =>
   }
 }
 
+/** Rota só de moderadores (papel "moderator" ou "admin"); os demais recebem 403. */
+export async function withModerator(request: Request, handler: (user: RequestUser) => Promise<Response>) {
+  return withUser(request, async (user) =>
+    user.role === "moderator" || user.role === "admin" ? handler(user) : apiError(403, "unauthorized", "Apenas moderadores."),
+  );
+}
+
 /** Corpo JSON validado pelo schema compartilhado, ou a resposta 400 com erros por campo. */
 export async function parseBody<S extends z.ZodType>(
   request: Request,

@@ -27,3 +27,12 @@ export async function getCurrentUser(): Promise<CurrentUser> {
   const { id, name, email, image, role, premiumUntil } = user;
   return { id, name, email, image, role, premiumUntil };
 }
+
+export const isModerator = (role: CurrentUser["role"]) => role === "moderator" || role === "admin";
+
+/** Páginas da moderação: quem não é moderador volta para a home. */
+export async function requireModerator(): Promise<CurrentUser> {
+  const user = await getCurrentUser();
+  if (!isModerator(user.role)) redirect("/app");
+  return user;
+}

@@ -243,8 +243,8 @@ async function toColumns(userId: string, input: VisitData) {
   const [stadium] = await db
     .select({ id: stadiums.id, country: stadiums.country })
     .from(stadiums)
-    // Aprovado, ou cadastrado pelo próprio usuário (em moderação)
-    .where(and(eq(stadiums.id, input.stadiumId), or(eq(stadiums.status, "approved"), and(eq(stadiums.status, "pending"), eq(stadiums.createdBy, userId)))))
+    // Aprovado, ou cadastrado pelo próprio usuário (em moderação ou recusado: continua valendo para ele)
+    .where(and(eq(stadiums.id, input.stadiumId), or(eq(stadiums.status, "approved"), eq(stadiums.createdBy, userId))))
     .limit(1);
   if (!stadium) throw new VisitError(400, "Local não encontrado.", "stadiumId");
 

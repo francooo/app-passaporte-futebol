@@ -11,6 +11,8 @@ export type ApiUser = {
   email: string | null;
   image: string | null;
   premium: boolean;
+  /** "moderator"/"admin" veem a moderação de locais e times. */
+  role: "user" | "moderator" | "admin";
 };
 
 export type AuthResponse = { token: string; user: ApiUser };
@@ -185,5 +187,41 @@ export type FanStats = {
   /** Palpites com resultado: total, placares exatos e vencedor/empate certo (sem contar os exatos). */
   predictions: { judged: number; exact: number; winner: number };
 };
+
+// ── Moderação (src/app/api/moderation/*) ──────────────────────────────────────
+
+type PendingBase = {
+  id: string;
+  /** ISO */
+  createdAt: string;
+  /** Nome de quem cadastrou (null se a conta foi apagada). */
+  author: string | null;
+  /** Carimbos que usam o cadastro. */
+  uses: number;
+};
+
+export type PendingVenue = PendingBase & {
+  name: string;
+  city: string;
+  state: string | null;
+  country: string;
+  sports: Sport[];
+  venueType: VenueType;
+  lat: number | null;
+  lng: number | null;
+  /** Locais aprovados da mesma cidade com nome parecido. */
+  duplicates: Array<{ id: string; name: string; city: string | null }>;
+};
+
+export type PendingTeam = PendingBase & {
+  name: string;
+  shortName: string | null;
+  sport: Sport;
+  crestUrl: string | null;
+  /** Times aprovados do mesmo esporte com nome parecido. */
+  duplicates: Array<{ id: string; name: string; crestUrl: string | null }>;
+};
+
+export type ModerationQueue = { venues: PendingVenue[]; teams: PendingTeam[] };
 
 export type MeProfile = ApiUser & { homeCity: string | null; favoriteTeam: TeamRef | null };

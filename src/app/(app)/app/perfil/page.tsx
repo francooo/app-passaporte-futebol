@@ -5,7 +5,8 @@ import { signOutAction } from "@/app/(auth)/actions";
 import { Button } from "@/components/ui/button";
 import { KitIcon, type KitIconName } from "@/components/ui/kit-icon";
 import { ProfileSettings } from "@/components/visits/profile-settings";
-import { getCurrentUser } from "@/lib/dal";
+import { getCurrentUser, isModerator } from "@/lib/dal";
+import { pendingCount } from "@/lib/moderation";
 import { getProfile } from "@/lib/visits";
 
 export const metadata: Metadata = { title: "Perfil" };
@@ -16,6 +17,26 @@ const sections: Array<{ title: string; description: string; icon: KitIconName }>
   { title: "Privacidade", description: "Defina quem pode ver suas visitas.", icon: "lock" },
 ];
 
+/** Só para moderadores: atalho para a fila de locais e times cadastrados por usuários. */
+async function ModerationLink() {
+  const user = await getCurrentUser();
+  if (!isModerator(user.role)) return null;
+  const pending = await pendingCount();
+  return (
+    <Link
+      href="/app/moderacao"
+      className="flex min-h-14 items-center gap-3 rounded-2xl border border-linha bg-white px-4 font-display text-lg font-semibold text-estadio hover:bg-partida/50"
+    >
+      <KitIcon name="stamp-visita" size={28} />
+      <span className="flex-1">Moderação</span>
+      <span className={pending ? "rounded-full bg-ingresso px-3 text-base" : "text-base font-normal text-suave"}>
+        {pending ? `${pending} ${pending === 1 ? "pendente" : "pendentes"}` : "em dia"}
+      </span>
+      <KitIcon name="arrow-right" size={20} />
+    </Link>
+  );
+}
+
 export default function PerfilPage() {
   return (
     <div className="flex flex-col gap-5 lg:gap-8">
@@ -25,6 +46,9 @@ export default function PerfilPage() {
         <div className="flex flex-col gap-5 lg:col-span-4">
           <Suspense fallback={<div className="h-24 animate-pulse rounded-2xl bg-white/60 lg:h-72" />}>
             <ProfileCard />
+          </Suspense>
+          <Suspense fallback={null}>
+            <ModerationLink />
           </Suspense>
           <form action={signOutAction}>
             <Button type="submit" variant="secundario" className="w-full">

@@ -18,13 +18,14 @@ export const newToken = () => randomBytes(32).toString("base64url");
 
 type UserRow = typeof users.$inferSelect;
 
-export function toApiUser(user: Pick<UserRow, "id" | "name" | "email" | "image" | "premiumUntil">): ApiUser {
+export function toApiUser(user: Pick<UserRow, "id" | "name" | "email" | "image" | "premiumUntil" | "role">): ApiUser {
   return {
     id: user.id,
     name: user.name,
     email: user.email,
     image: user.image,
     premium: Boolean(user.premiumUntil && user.premiumUntil > new Date()),
+    role: user.role,
   };
 }
 

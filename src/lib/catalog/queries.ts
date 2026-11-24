@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, gt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, or, sql } from "drizzle-orm";
 import type { CatalogCountry, NearbyStadium, StadiumDetail, StadiumPage, StadiumSummary } from "@shared/api-types";
 import type { Sport, VenueType } from "@shared/sports";
 import { db } from "@/db";
@@ -83,9 +83,9 @@ async function withNextMatch(items: StadiumSummary[]): Promise<StadiumSummary[]>
 
 const visible = and(eq(stadiums.status, "approved"), hasUsefulData);
 
-/** Catálogo aprovado + os locais que o próprio usuário cadastrou (em moderação). */
+/** Catálogo aprovado + os locais que o próprio usuário cadastrou (em moderação ou recusados: continuam dele). */
 const visibleFor = (userId?: string | null) =>
-  userId ? or(visible, and(eq(stadiums.status, "pending"), eq(stadiums.createdBy, userId))) : visible;
+  userId ? or(visible, and(inArray(stadiums.status, ["pending", "rejected"]), eq(stadiums.createdBy, userId))) : visible;
 
 /** Nome ou cidade, sem diferenciar acentos ("maracana" encontra "Maracanã"). */
 const nameOrCity = (term: string) =>
