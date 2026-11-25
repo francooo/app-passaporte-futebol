@@ -133,13 +133,26 @@ describe("venueSports", () => {
     expect(venueSports({ ...base, football: true, indoor: true })).toEqual({ sports: ["futebol"], venueType: "estadio" });
   });
 
-  it("ginásio e arena recebem vôlei, basquete e futsal", () => {
+  it("sem informação: ginásio é poliesportivo; arena fica com vôlei e basquete", () => {
     expect(venueSports({ ...base, indoor: true, gym: true })).toEqual({ sports: ["volei", "basquete", "futsal"], venueType: "ginasio" });
-    expect(venueSports({ ...base, indoor: true })?.venueType).toBe("arena");
+    expect(venueSports({ ...base, indoor: true })).toEqual({ sports: ["volei", "basquete"], venueType: "arena" });
   });
 
-  it("casa de shows fica de fora", () => {
+  it("esporte do local ou dos times mandantes decide (casa da NBA → só basquete)", () => {
+    expect(venueSports({ ...base, indoor: true, clubSportIds: ["Q5372", "Q41466"] })?.sports).toEqual(["basquete"]);
+    expect(venueSports({ ...base, indoor: true, gym: true, sportIds: ["Q1734"] })?.sports).toEqual(["volei"]);
+    expect(venueSports({ ...base, indoor: true, sportIds: ["Q171401", "Q5372"] })?.sports).toEqual(["basquete", "futsal"]);
+  });
+
+  it("arena só de outros esportes (hóquei) fica de fora; ginásio continua", () => {
+    expect(venueSports({ ...base, indoor: true, clubSportIds: ["Q41466"] })).toBeNull();
+    expect(venueSports({ ...base, indoor: true, gym: true, sportIds: ["Q41466"] })?.sports).toEqual(["volei", "basquete", "futsal"]);
+  });
+
+  it("casa de shows fica de fora, a não ser que tenha esporte de quadra", () => {
     expect(venueSports({ ...base, indoor: true, onlyShows: true })).toBeNull();
+    expect(venueSports({ ...base, indoor: true, showVenue: true })).toBeNull();
+    expect(venueSports({ ...base, indoor: true, showVenue: true, clubSportIds: ["Q5372"] })?.sports).toEqual(["basquete"]);
   });
 
   it("arena grande com esporte = futebol é estádio (Arena Barueri), a pequena continua arena (Maracanãzinho)", () => {

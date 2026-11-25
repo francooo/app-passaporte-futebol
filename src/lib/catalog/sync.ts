@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, count, eq, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { countries, stadiums } from "@/db/schema";
 import { fetchPhotoCredits } from "./commons";
@@ -36,10 +36,14 @@ export async function syncCountry(iso3: string) {
     const today = new Date();
 
     let imported = 0;
+    const excluded: string[] = [];
     for (const s of raw) {
       const { capacity, needsReview } = pickCapacity(s.capacities);
       const kind = venueSports(s.venue, capacity);
-      if (!kind) continue;
+      if (!kind) {
+        excluded.push(s.wikidataId);
+        continue;
+      }
       imported++;
       const { city, state } = resolvePlace(s.locationIds, places);
       const photo = s.imageFile ? credits.get(s.imageFile) : undefined;
@@ -70,6 +74,14 @@ export async function syncCountry(iso3: string) {
         .insert(stadiums)
         .values({ ...values, wikidataId: s.wikidataId })
         .onConflictDoUpdate({ target: stadiums.wikidataId, set: values });
+    }
+
+    // Importados antes com outra regra e agora fora (arena só de hóquei, casa de shows…): sem esporte, saem dos filtros
+    if (excluded.length) {
+      await db
+        .update(stadiums)
+        .set({ sports: [] })
+        .where(and(inArray(stadiums.wikidataId, excluded), eq(stadiums.source, "wikidata")));
     }
 
     const [{ total }] = await db

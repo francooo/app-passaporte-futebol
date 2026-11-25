@@ -11,19 +11,34 @@ export type VenueClassInfo = {
   indoor: boolean;
   /** Algum tipo é "ginásio" (Q14092 e subclasses). */
   gym: boolean;
-  /** Só casa de shows (ex.: Canecão): fora do catálogo. */
+  /** Só casa de shows: fora do catálogo. */
   onlyShows: boolean;
+  /** Também é casa de shows (ex.: Canecão): só entra com um esporte de quadra informado. */
+  showVenue?: boolean;
   /** P641 = futebol (alguns estádios de futebol são só "arena" no Wikidata, ex.: Arena Barueri). */
   footballSport: boolean;
+  /** Esportes (P641) do próprio local e dos times mandantes (P466 → P641), em Q-ids. */
+  sportIds?: string[];
+  clubSportIds?: string[];
+};
+
+/** Q-ids do Wikidata dos esportes de quadra do catálogo. */
+export const WIKIDATA_INDOOR_SPORTS: Record<string, Sport> = {
+  Q1734: "volei", // voleibol
+  Q5372: "basquete", // basquetebol
+  Q171401: "futsal",
 };
 
 /** Arena com esporte = futebol e pelo menos esta capacidade é estádio de futebol (o Maracanãzinho, 11.800, não é). */
 export const FOOTBALL_ARENA_MIN_CAPACITY = 20_000;
 
 /**
- * Esportes e tipo do local. Arena/ginásio poliesportivo recebe vôlei, basquete e futsal (o P641 do Wikidata
- * é raro e incompleto, e um filtro estreito demais esconderia o local); estádio de futebol fica só com o futebol.
- * Null = não entra no catálogo.
+ * Esportes e tipo do local.
+ * - Estádio de futebol: só futebol.
+ * - Arena/ginásio: os esportes de quadra informados no próprio local (P641) ou pelos times que jogam lá
+ *   (ex.: casa de um time da NBA → basquete). Sem informação: ginásio recebe vôlei, basquete e futsal
+ *   (poliesportivo); arena, vôlei e basquete. Arena só de outros esportes (hóquei, tênis…) fica de fora.
+ * Null = não entra no catálogo de esportes.
  */
 export function venueSports(v: VenueClassInfo, capacity: number | null = null): { sports: Sport[]; venueType: VenueType } | null {
   if (!v.football && v.indoor && v.footballSport && (capacity ?? 0) >= FOOTBALL_ARENA_MIN_CAPACITY) {
@@ -32,7 +47,14 @@ export function venueSports(v: VenueClassInfo, capacity: number | null = null): 
   // Estádio de futebol que também é "arena multiúso" no Wikidata continua só futebol (evita estádios na busca de vôlei)
   if (v.football) return { sports: ["futebol"], venueType: "estadio" };
   if (!v.indoor || v.onlyShows) return null;
-  return { sports: [...INDOOR_SPORTS], venueType: v.gym ? "ginasio" : "arena" };
+  const venueType: VenueType = v.gym ? "ginasio" : "arena";
+  const ids = [...(v.sportIds ?? []), ...(v.clubSportIds ?? [])];
+  const known = INDOOR_SPORTS.filter((s) => ids.some((id) => WIKIDATA_INDOOR_SPORTS[id] === s));
+  if (known.length) return { sports: known, venueType };
+  if (v.showVenue) return null;
+  // Só outros esportes informados: ginásio continua poliesportivo; arena (hóquei, tênis, shows…) sai
+  if (ids.length && !v.gym) return null;
+  return { sports: v.gym ? [...INDOOR_SPORTS] : ["volei", "basquete"], venueType };
 }
 
 export type CapacityStatement = {

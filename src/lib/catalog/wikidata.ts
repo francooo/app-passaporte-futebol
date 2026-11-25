@@ -140,8 +140,10 @@ async function classes(): Promise<Classes> {
   const generic = (await subclassesOf("Q483110")).filter((id) => !football.includes(id)); // estádio
   const stadiumTypes = new Set([...football, ...generic]);
   // arena / ginásio / complexo poliesportivo (sem os tipos de estádio, que já entram acima)
-  const gym = new Set(await subclassesOf("Q14092"));
-  const indoor = [...new Set([...(await subclassesOf("Q641226", "Q7579839")), ...gym])].filter((id) => !stadiumTypes.has(id));
+  // "Arena multiúso" fica abaixo de "ginásio" no Wikidata: ginásio de verdade é o que não é também arena
+  const arenaTypes = new Set(await subclassesOf("Q641226", "Q7579839"));
+  const gym = new Set((await subclassesOf("Q14092")).filter((id) => !arenaTypes.has(id)));
+  const indoor = [...new Set([...arenaTypes, ...gym])].filter((id) => !stadiumTypes.has(id));
   const shows = new Set(await subclassesOf("Q18674739")); // casa de shows
   // município / cidade / vila / cidade grande; 1º nível administrativo (estados, províncias…)
   const municipality = new Set(await subclassesOf("Q15284", "Q515", "Q3957", "Q1549591"));
@@ -258,7 +260,9 @@ export async function fetchCountryStadiums(countryQid: string): Promise<{ stadiu
       indoor: indoorIds.has(e.id),
       gym: types.some((t) => cls.gym.has(t)),
       onlyShows: types.length > 0 && types.every((t) => cls.shows.has(t) || !cls.indoor.includes(t)) && types.some((t) => cls.shows.has(t)),
+      showVenue: types.some((t) => cls.shows.has(t)),
       footballSport: itemIds(e, "P641").includes("Q2736"),
+      sportIds: itemIds(e, "P641"),
     };
     const coord = firstValue<{ latitude: number; longitude: number }>(e, "P625");
     stadiums.push({
@@ -281,9 +285,12 @@ export async function fetchCountryStadiums(countryQid: string): Promise<{ stadiu
   }
 
   // Nomes dos clubes mandantes
-  const clubEntities = await fetchEntities(stadiums.flatMap((s) => s.clubs), "labels");
+  // Nomes e esportes (P641) dos clubes mandantes: o esporte do time diz o esporte da arena
+  const clubEntities = await fetchEntities(stadiums.flatMap((s) => s.clubs), "labels|claims");
   for (const s of stadiums) {
-    s.clubs = [...new Set(s.clubs.map((id) => label(clubEntities.get(id))).filter((n): n is string => !!n))];
+    const entities = s.clubs.map((id) => clubEntities.get(id)).filter((e): e is Entity => !!e);
+    s.venue.clubSportIds = [...new Set(entities.flatMap((e) => itemIds(e, "P641")))];
+    s.clubs = [...new Set(entities.map((e) => label(e)).filter((n): n is string => !!n))];
   }
 
   // Hierarquia de locais (P131), nível a nível, até achar município e estado
