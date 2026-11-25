@@ -1,3 +1,5 @@
+import { venuePlural } from "@shared/sport-copy";
+import { parseSport } from "@shared/sports";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
@@ -11,7 +13,8 @@ import { colors, font, radius, type } from "@/theme";
 
 /** Lista completa de estádios do país: do maior para o menor, com busca e carregamento contínuo. */
 export default function EstadiosScreen() {
-  const { pais = "BRA", nome } = useLocalSearchParams<{ pais?: string; nome?: string }>();
+  const { pais = "BRA", nome, esporte } = useLocalSearchParams<{ pais?: string; nome?: string; esporte?: string }>();
+  const sport = parseSport(esporte);
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<StadiumSummary[]>([]);
   const [total, setTotal] = useState<number | null>(null);
@@ -26,7 +29,7 @@ export default function EstadiosScreen() {
       setLoading(true);
       setError(null);
       try {
-        const res = await catalogApi.stadiums(pais, { q, page });
+        const res = await catalogApi.stadiums(pais, { q, page, sport: sport ?? undefined });
         if (id !== requestId.current) return; // resposta de uma busca antiga
         setItems((prev) => (replace ? res.items : [...prev, ...res.items]));
         setNextPage(res.nextPage);
@@ -37,7 +40,7 @@ export default function EstadiosScreen() {
         if (id === requestId.current) setLoading(false);
       }
     },
-    [pais],
+    [pais, sport],
   );
 
   // Busca com pequena espera enquanto digita
@@ -54,11 +57,11 @@ export default function EstadiosScreen() {
           <Text style={styles.backText}>Mapa</Text>
         </Pressable>
         <Text style={[type.titulo, styles.title]} accessibilityRole="header" numberOfLines={2}>
-          Estádios: {nome ?? pais}
+          {venuePlural(sport ?? "futebol")}: {nome ?? pais}
         </Text>
         {total != null && (
           <Text style={type.suave}>
-            {total} {total === 1 ? "estádio" : "estádios"} · do maior para o menor
+            {total} {sport && sport !== "futebol" ? (total === 1 ? "local" : "locais") : total === 1 ? "estádio" : "estádios"} · do maior para o menor
           </Text>
         )}
         <View style={styles.search}>

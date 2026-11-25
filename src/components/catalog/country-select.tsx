@@ -11,15 +11,19 @@ export function CountrySelect({
   countries,
   selected,
   action = "/app/mapa",
+  sport,
   className,
 }: {
   countries: CatalogCountry[];
   selected: string;
   action?: string;
+  /** Esporte do filtro do mapa (mantido ao trocar de país). */
+  sport?: string;
   className?: string;
 }) {
   return (
     <form action={action} className={cn("flex items-center gap-2", className)}>
+      {sport && sport !== "futebol" && <input type="hidden" name="esporte" value={sport} />}
       <label className="flex min-h-12 flex-1 items-center gap-3 rounded-xl border border-linha bg-papel px-4">
         <span className="rotulo-display shrink-0 text-xs text-suave">País</span>
         <select

@@ -1,14 +1,16 @@
 import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CatalogCountry, StadiumDetail, StadiumPage } from "@shared/api-types";
+import type { Sport } from "@shared/sports";
 import { api, ApiRequestError } from "./api";
 
 /** Catálogo de estádios (API pública do web: src/app/api/catalog/*). */
 export const catalogApi = {
-  countries: () => api<CatalogCountry[]>("/api/catalog/countries"),
-  stadiums: (country: string, { q, page = 0 }: { q?: string; page?: number } = {}) =>
+  /** Com esporte: só os países com locais daquele esporte (filtro do mapa). */
+  countries: (sport?: Sport) => api<CatalogCountry[]>(`/api/catalog/countries${sport ? `?esporte=${sport}` : ""}`),
+  stadiums: (country: string, { q, page = 0, sport }: { q?: string; page?: number; sport?: Sport } = {}) =>
     api<StadiumPage>(
-      `/api/catalog/stadiums?${new URLSearchParams({ country, page: String(page), ...(q ? { q } : {}) })}`,
+      `/api/catalog/stadiums?${new URLSearchParams({ country, page: String(page), ...(q ? { q } : {}), ...(sport ? { esporte: sport } : {}) })}`,
     ),
   stadium: (id: string) => api<StadiumDetail>(`/api/catalog/stadiums/${encodeURIComponent(id)}`),
 };

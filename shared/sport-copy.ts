@@ -18,5 +18,8 @@ export const scoreDigits = (sport: Sport) => String(SPORT_INFO[sport].maxScore).
 /** O esporte tem partidas importadas (busca em "Encontre a partida")? Futsal é só manual. */
 export const hasMatchSource = (sport: Sport) => SPORT_COPY[sport].source != null;
 
+/** Título de listas de locais ("Estádios", "Ginásios e arenas"). */
+export const venuePlural = (sport: Sport) => (sport === "futebol" ? "Estádios" : "Ginásios e arenas");
+
 /** Nome do local em frases ("estádio", "local"). */
 export const venueWord = (sport: Sport) => (sport === "futebol" ? "estádio" : "local");

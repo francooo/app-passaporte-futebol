@@ -1,10 +1,13 @@
 import { WORLD_MAP_COUNTRIES, WORLD_MAP_VIEWBOX } from "@shared/world-map-data";
+import type { Sport } from "@shared/sports";
 import { cn } from "@/lib/cn";
 
 type Props = {
   selected: string;
   /** ISO3 → nome em português, só dos países com estádios no catálogo. */
   available: Map<string, string>;
+  /** Esporte do filtro do mapa: os links dos países o mantêm. */
+  sport?: Sport;
   className?: string;
 };
 
@@ -12,7 +15,8 @@ type Props = {
  * Mapa-múndi clicável renderizado no servidor: cada país com estádios é um link (funciona sem JavaScript).
  * Amarelo = selecionado; verde-estádio = tem estádios; verde-claro = sem estádios no catálogo.
  */
-export function WorldMap({ selected, available, className }: Props) {
+export function WorldMap({ selected, available, sport, className }: Props) {
+  const suffix = sport && sport !== "futebol" ? `&esporte=${sport}` : "";
   return (
     <svg viewBox={WORLD_MAP_VIEWBOX} className={cn("h-auto w-full", className)} role="group" aria-label="Mapa-múndi: escolha um país">
       {WORLD_MAP_COUNTRIES.map((c, i) => {
@@ -31,7 +35,7 @@ export function WorldMap({ selected, available, className }: Props) {
         return (
           <a
             key={`${c.iso3}-${i}`}
-            href={`/app/mapa?pais=${c.iso3}`}
+            href={`/app/mapa?pais=${c.iso3}${suffix}`}
             aria-label={`${name}${isSelected ? " (selecionado)" : ""}`}
             aria-current={isSelected ? "true" : undefined}
             className="outline-none focus-visible:[&>path]:fill-ingresso-escuro"

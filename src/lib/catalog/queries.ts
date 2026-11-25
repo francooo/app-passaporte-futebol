@@ -94,7 +94,21 @@ const nameOrCity = (term: string) =>
     sql`unaccent(${stadiums.city}) ilike unaccent(${`%${term}%`})`,
   );
 
-export async function listCountries(): Promise<CatalogCountry[]> {
+/**
+ * Países com locais no catálogo. Com esporte: só os países com locais daquele esporte, com a contagem
+ * desse esporte (mapa filtrado por vôlei, basquete, futsal…).
+ */
+export async function listCountries(sport?: Sport | null): Promise<CatalogCountry[]> {
+  if (sport) {
+    const total = sql<number>`count(${stadiums.id})::int`;
+    return db
+      .select({ iso3: countries.iso3, iso2: countries.iso2, name: countries.namePt, stadiumCount: total })
+      .from(stadiums)
+      .innerJoin(countries, eq(countries.iso3, stadiums.country))
+      .where(and(visible, playsSport(sport)))
+      .groupBy(countries.iso3, countries.iso2, countries.namePt)
+      .orderBy(asc(countries.namePt));
+  }
   const rows = await db
     .select({ iso3: countries.iso3, iso2: countries.iso2, name: countries.namePt, stadiumCount: countries.stadiumCount })
     .from(countries)
